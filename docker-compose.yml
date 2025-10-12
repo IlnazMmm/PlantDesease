@@ -7,7 +7,7 @@ services:
     container_name: plant-backend
     ports:
       - "8000:8000"
-#    restart: unless-stoppedd
+#    restart: unless-stopped
 
   frontend:
     build:

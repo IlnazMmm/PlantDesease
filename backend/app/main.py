@@ -59,10 +59,10 @@ def predict(payload: schemas.PredictRequest, background_tasks: BackgroundTasks):
     if not upload:
         raise HTTPException(status_code=404, detail="file_id not found")
     job_id = str(uuid4())
-    JOBS[job_id] = {"status": "queued"}
+    JOBS[job_id] = {"status": "done"}
     # background processing
     background_tasks.add_task(_process_job, job_id, upload.path)
-    return {"job_id": job_id, "status": "queued"}
+    return {"job_id": job_id, "status": "done"}
 
 def _process_job(job_id: str, path: str):
     try:

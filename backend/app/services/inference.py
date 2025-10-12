@@ -6,7 +6,8 @@ This is a minimal example. Replace model loading with real PyTorch/ONNX inferenc
 """
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 import random
-from pathlib import Path
+
+from src.infer import load_model, predict
 
 # Dummy label map (should correspond to trained model)
 LABELS = [
@@ -36,6 +37,10 @@ def _dummy_predict(image_path: str):
     conf = round(random.uniform(0.6, 0.99), 3)
     return label, conf
 
+def _real_predict(path_to_image: str, path_to_weights: str = './ml/models/model_v3.pth'):
+    model, classes = load_model(path_to_weights)
+    return predict(model, classes, path_to_image)
+
 def _make_gradcam_overlay(image_path: str, label: str):
     # create a fake heatmap overlay using blur & red ellipse
     im = Image.open(image_path).convert("RGBA")
@@ -55,7 +60,7 @@ def _make_gradcam_overlay(image_path: str, label: str):
     return combined
 
 def predict_image(image_path: str):
-    label, conf = _dummy_predict(image_path)
+    label, conf = _real_predict(image_path)
     plant = label.split("___")[0] if "___" in label else "Unknown"
     disease = label.split("___")[1] if "___" in label else label
     gradcam = _make_gradcam_overlay(image_path, disease)

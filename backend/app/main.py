@@ -1,3 +1,5 @@
+import traceback
+
 from fastapi import FastAPI, UploadFile, File, BackgroundTasks, HTTPException
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -70,16 +72,20 @@ def _process_job(job_id: str, path: str):
         result = infer_service.predict_image(path)
         # save gradcam image
         gradcam_path = GRADCAM_DIR / f"{job_id}.png"
-        if "gradcam_image" in result:
-            result["gradcam_image"].save(gradcam_path)
+        # if "gradcam_image" in result:
+        #     result["gradcam_image"].save(gradcam_path)
         # save into simple sqlite table
         db = SessionLocal()
-        record = db_models.Result(job_id=job_id, file_path=path, plant=result.get("plant", ""), disease=result.get("disease",""), confidence=float(result.get("confidence",0.0)), gradcam_path=str(gradcam_path))
-        db.add(record)
-        db.commit()
+        print(result)
+        # print(result.get("confidence",0.0))
+        # record = db_models.Result(job_id=job_id, file_path=path, plant=result.get("plant", ""), disease=result.get("disease",""), confidence=float(result.get("confidence",0.0)), gradcam_path=str(gradcam_path))
+        # db.add(record)
+        # db.commit()
         db.close()
         JOBS[job_id] = {"status": "done", "result": result}
     except Exception as e:
+        print("❌ Error in _process_job:", e)
+        traceback.print_exc()
         JOBS[job_id] = {"status": "error", "error": str(e)}
 
 @app.get("/api/v1/status/{job_id}")

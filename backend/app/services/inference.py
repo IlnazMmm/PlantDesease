@@ -60,7 +60,7 @@ def _make_gradcam_overlay(image_path: str, label: str):
     return combined
 
 def predict_image(image_path: str):
-    label, conf = _real_predict(image_path)
+    label, conf, _ = _real_predict(image_path).values()
     plant = label.split("___")[0] if "___" in label else "Unknown"
     disease = label.split("___")[1] if "___" in label else label
     gradcam = _make_gradcam_overlay(image_path, disease)
@@ -70,5 +70,5 @@ def predict_image(image_path: str):
         "confidence": conf,
         "description": DESCRIPTIONS.get(label, ""),
         "treatment": TREATMENTS.get(label, ""),
-        "gradcam_image": gradcam
+        "gradcam_image": 'gradcam'
     }

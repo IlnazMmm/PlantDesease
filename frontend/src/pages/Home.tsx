@@ -11,12 +11,40 @@ type PredictionResult = {
   treatment?: string;
 };
 
-export default function Home() {
+type JobStatus = "queued" | "processing" | "done" | "error" | "saved" | null;
+
+const STATUS_COPY: Record<Exclude<JobStatus, null>, { label: string; tone: "warning" | "info" | "success" | "danger" }> = {
+  queued: { label: "Queued", tone: "warning" },
+  processing: { label: "Processing", tone: "info" },
+  done: { label: "Completed", tone: "success" },
+  error: { label: "Failed", tone: "danger" },
+  saved: { label: "Saved", tone: "success" },
+};
+
+const normalizeStatus = (value: unknown): JobStatus => {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const lookup: Record<string, JobStatus> = {
+    queued: "queued",
+    processing: "processing",
+    running: "processing",
+    done: "done",
+    error: "error",
+    saved: "saved",
+  };
+
+  return lookup[value] ?? null;
+};
+
+export default function Home(): JSX.Element {
   const [file, setFile] = useState<File | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
-  const [status, setStatus] = useState<string | null>(null);
+  const [status, setStatus] = useState<JobStatus>(null);
   const [result, setResult] = useState<PredictionResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -51,9 +79,9 @@ export default function Home() {
     return fallback;
   };
 
-  const upload = async () => {
+  const upload = async (): Promise<string | null> => {
     if (!file) {
-      setError("Пожалуйста, выберите файл изображения.");
+      setError("Пожалуйста, выберите изображение растения для анализа.");
       return null;
     }
 
@@ -75,99 +103,137 @@ export default function Home() {
     intervalRef.current = setInterval(async () => {
       try {
         const s = await api.get(`/api/v1/status/${jid}`);
-        setStatus(s.data.status);
+        const nextStatus = normalizeStatus(s.data.status);
+        setStatus(nextStatus);
 
-        if (s.data.status === "done") {
+        if (nextStatus === "done") {
           clearPolling();
           const r = await api.get(`/api/v1/result/${jid}`);
           setResult(r.data);
+          setIsSubmitting(false);
         }
 
-        if (s.data.status === "error") {
+        if (nextStatus === "error") {
           clearPolling();
           setStatus("error");
-          setError("Произошла ошибка при обработке задачи.");
+          setError("Произошла ошибка при обработке задачи. Попробуйте еще раз.");
+          setIsSubmitting(false);
         }
       } catch (err) {
         clearPolling();
         setError(getErrorMessage(err, "Не удалось получить статус задачи."));
+        setIsSubmitting(false);
       }
     }, 1000);
   };
 
   const handleRun = async () => {
     setError(null);
+    setResult(null);
+    setStatus(null);
     clearPolling();
+    setIsSubmitting(true);
 
-    const file_id = await upload();
-    if (!file_id) {
+    const fileId = await upload();
+    if (!fileId) {
+      setIsSubmitting(false);
       return;
     }
 
     try {
-      const job = await api.post("/api/v1/predict", { file_id, model_version: "v1" });
+      const job = await api.post("/api/v1/predict", { file_id: fileId, model_version: "v1" });
       setJobId(job.data.job_id);
       setStatus("queued");
-      setResult(null);
       poll(job.data.job_id);
     } catch (err) {
       setError(getErrorMessage(err, "Не удалось запустить анализ."));
+      setIsSubmitting(false);
     }
   };
 
+  const renderStatus = () => {
+    if (!status) {
+      return null;
+    }
+
+    const config = STATUS_COPY[status];
+
+    return (
+      <div className="status">
+        <span className={`status__badge status__badge--${config?.tone ?? "info"}`}>
+          {config?.label ?? status}
+        </span>
+        {jobId && <span className="status__job">ID задачи: {jobId}</span>}
+      </div>
+    );
+  };
+
   return (
-    <div className="bg-white p-6 rounded shadow">
-      <div className="mb-4">
+    <div className="card">
+      <div className="field">
+        <label htmlFor="image-upload" className="field__label">
+          Изображение растения
+        </label>
         <input
+          id="image-upload"
+          className="field__input"
           type="file"
           accept="image/*"
-          onChange={(e) => setFile(e.target.files?.[0] || null)}
+          onChange={(e) => setFile(e.target.files?.[0] ?? null)}
         />
+        <p className="field__hint">Поддерживаются изображения в форматах JPG, PNG или JPEG.</p>
       </div>
-      <div className="mb-4">
-        <button className="bg-blue-600 text-white px-4 py-2 rounded" onClick={handleRun}>
-          Analyze
+
+      <div className="actions">
+        <button className="button" onClick={handleRun} disabled={isSubmitting || !file}>
+          {isSubmitting ? "Анализируем..." : "Анализировать"}
         </button>
+        <p className="actions__info">
+          После загрузки мы будем периодически проверять статус задачи и покажем результат сразу, как он появится.
+        </p>
       </div>
 
-      {error && <div className="mb-4 text-red-600">{error}</div>}
+      {error && <div className="alert alert--error">{error}</div>}
 
-      {jobId && (
-        <div className="mb-4">
-          Job: {jobId} — Status: {status}
-        </div>
-      )}
+      {renderStatus()}
 
       {result && (
-        <div className="mt-4">
-          <h2 className="text-xl font-semibold">Result</h2>
-          <p>
-            <strong>Plant:</strong> {result.plant}
-          </p>
-          <p>
-            <strong>Disease:</strong> {result.disease}
-          </p>
-          <p>
-            <strong>Confidence:</strong> {(result.confidence * 100).toFixed(1)}%
-          </p>
+        <div className="result">
+          <h2 className="result__title">Результат анализа</h2>
+          <dl className="result__grid">
+            <div>
+              <dt>Растение</dt>
+              <dd>{result.plant}</dd>
+            </div>
+            <div>
+              <dt>Заболевание</dt>
+              <dd>{result.disease}</dd>
+            </div>
+            <div>
+              <dt>Уверенность модели</dt>
+              <dd>{(result.confidence * 100).toFixed(1)}%</dd>
+            </div>
+          </dl>
+
           {result.gradcam_url && (
-            <img
-              src={`${API_BASE_URL}${result.gradcam_url}`}
-              alt="gradcam"
-              className="mt-2 max-w-full rounded shadow"
-            />
+            <figure className="result__figure">
+              <img src={`${API_BASE_URL}${result.gradcam_url}`} alt="Grad-CAM visualization" />
+              <figcaption>Тепловая карта уязвимых участков листа.</figcaption>
+            </figure>
           )}
+
           {result.description && (
-            <>
-              <h3 className="mt-2 font-semibold">Description</h3>
+            <section className="result__section">
+              <h3>Описание</h3>
               <p>{result.description}</p>
-            </>
+            </section>
           )}
+
           {result.treatment && (
-            <>
-              <h3 className="mt-2 font-semibold">Treatment</h3>
+            <section className="result__section">
+              <h3>Рекомендации по лечению</h3>
               <p>{result.treatment}</p>
-            </>
+            </section>
           )}
         </div>
       )}

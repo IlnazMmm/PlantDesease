@@ -1,6 +1,265 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+* {
+  box-sizing: border-box;
+}
 
-/* tailwind minimal config assumed */
-body { font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; }
+html,
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+  font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  background-color: #f3f4f6;
+  color: #111827;
+}
+
+#root {
+  min-height: 100%;
+}
+
+.app {
+  min-height: 100vh;
+  padding: 32px 16px 48px;
+  display: flex;
+}
+
+.app__inner {
+  width: 100%;
+  max-width: 760px;
+  margin: auto;
+}
+
+.app__title {
+  margin: 0 0 12px;
+  font-size: 2.5rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: #0f172a;
+}
+
+.app__subtitle {
+  margin: 0 0 24px;
+  font-size: 1.05rem;
+  color: #475569;
+}
+
+.card {
+  background-color: #ffffff;
+  border-radius: 20px;
+  padding: 28px;
+  box-shadow: 0 20px 45px rgba(15, 23, 42, 0.12);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.field + .field {
+  margin-top: 18px;
+}
+
+.field__label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: #1f2937;
+}
+
+.field__input {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid #cbd5f5;
+  border-radius: 12px;
+  background-color: #f8fafc;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.field__input:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+
+.field__hint {
+  margin-top: 8px;
+  font-size: 0.9rem;
+  color: #64748b;
+}
+
+.actions {
+  margin-top: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.button {
+  align-self: flex-start;
+  padding: 12px 28px;
+  border: none;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+  color: #ffffff;
+  font-weight: 600;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.2s ease;
+  box-shadow: 0 15px 30px rgba(37, 99, 235, 0.35);
+}
+
+.button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 18px 36px rgba(37, 99, 235, 0.4);
+  filter: brightness(1.02);
+}
+
+.button:disabled {
+  cursor: not-allowed;
+  background: linear-gradient(135deg, #94a3b8, #94a3b8);
+  box-shadow: none;
+}
+
+.actions__info {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #475569;
+}
+
+.alert {
+  margin-top: 20px;
+  padding: 14px 18px;
+  border-radius: 12px;
+  font-size: 0.95rem;
+  line-height: 1.4;
+}
+
+.alert--error {
+  background-color: #fee2e2;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
+}
+
+.status {
+  margin-top: 24px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.status__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.status__badge--warning {
+  background-color: #fef3c7;
+  color: #92400e;
+}
+
+.status__badge--info {
+  background-color: #e0f2fe;
+  color: #075985;
+}
+
+.status__badge--success {
+  background-color: #dcfce7;
+  color: #166534;
+}
+
+.status__badge--danger {
+  background-color: #fee2e2;
+  color: #b91c1c;
+}
+
+.status__job {
+  font-size: 0.9rem;
+  color: #475569;
+}
+
+.result {
+  margin-top: 32px;
+  padding-top: 24px;
+  border-top: 1px solid rgba(148, 163, 184, 0.3);
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.result__title {
+  margin: 0;
+  font-size: 1.75rem;
+  color: #0f172a;
+}
+
+.result__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+  margin: 0;
+}
+
+.result__grid div {
+  background-color: #f1f5f9;
+  border-radius: 14px;
+  padding: 14px 18px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+}
+
+.result__grid dt {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: #64748b;
+  margin-bottom: 6px;
+}
+
+.result__grid dd {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.result__figure {
+  margin: 0;
+}
+
+.result__figure img {
+  max-width: 100%;
+  width: 100%;
+  border-radius: 16px;
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.22);
+}
+
+.result__figure figcaption {
+  margin-top: 8px;
+  font-size: 0.85rem;
+  color: #475569;
+}
+
+.result__section h3 {
+  margin: 0 0 8px;
+  font-size: 1.1rem;
+  color: #0f172a;
+}
+
+.result__section p {
+  margin: 0;
+  line-height: 1.6;
+  color: #334155;
+}
+
+@media (max-width: 600px) {
+  .card {
+    padding: 22px;
+  }
+
+  .button {
+    width: 100%;
+    text-align: center;
+  }
+}

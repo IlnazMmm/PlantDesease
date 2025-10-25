@@ -1,4 +1,5 @@
 docker_kill_cleanup.sh
 .venv
+.idea
 ml/data
 frontend/node_modules

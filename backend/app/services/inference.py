@@ -11,6 +11,7 @@ import numpy as np
 import torch
 from PIL import Image, ImageDraw, ImageFont
 from torchvision import transforms
+from torch import nn
 
 from src.infer import load_model, predict
 
@@ -60,6 +61,24 @@ def _fallback_overlay(image_path: str, label: str) -> Image.Image:
     return combined
 
 
+def _resolve_gradcam_target(model: torch.nn.Module) -> torch.nn.Module:
+    """Return the last spatial convolutional layer for Grad-CAM."""
+
+    cached = getattr(model, "_gradcam_target_layer", None)
+    if cached is not None:
+        return cached
+
+    conv_layers = [module for module in model.modules() if isinstance(module, nn.Conv2d)]
+    if not conv_layers:
+        raise RuntimeError("Model has no convolutional layers for Grad-CAM")
+
+    spatial_layers = [module for module in conv_layers if module.kernel_size != (1, 1)]
+    target_layer = spatial_layers[-1] if spatial_layers else conv_layers[-1]
+
+    model._gradcam_target_layer = target_layer  # type: ignore[attr-defined]
+    return target_layer
+
+
 def _make_gradcam_overlay(image_path: str, label: str) -> Image.Image:
     """Generate a Grad-CAM heatmap overlay for the given prediction label."""
 
@@ -90,7 +109,7 @@ def _make_gradcam_overlay(image_path: str, label: str) -> Image.Image:
         activations: Dict[str, torch.Tensor] = {}
         gradients: Dict[str, torch.Tensor] = {}
 
-        target_layer = model.features[-1]
+        target_layer = _resolve_gradcam_target(model)
 
         def forward_hook(_, __, output):
             activations["value"] = output.detach()
@@ -134,13 +153,27 @@ def _make_gradcam_overlay(image_path: str, label: str) -> Image.Image:
             cam_np -= cam_np.min()
             cam_np /= cam_np.max() + 1e-8
 
+            # Suppress low-activation regions so the heatmap focuses on salient areas
+            threshold = float(np.quantile(cam_np, 0.6))
+            cam_np = np.clip(cam_np - threshold, 0.0, None)
+            if np.max(cam_np) > 0:
+                cam_np /= np.max(cam_np)
+
             heatmap = Image.fromarray(np.uint8(cam_np * 255), mode="L")
             heatmap = heatmap.resize(image.size, resample=Image.BILINEAR)
 
-            red_channel = heatmap
             zero_channel = Image.new("L", heatmap.size, 0)
+            green_channel = Image.fromarray(
+                np.uint8(np.array(heatmap) * 0.6), mode="L"
+            )
             heatmap_rgba = Image.merge(
-                "RGBA", (red_channel, zero_channel, zero_channel, heatmap)
+                "RGBA",
+                (
+                    heatmap,
+                    green_channel,
+                    zero_channel,
+                    heatmap,
+                ),
             )
 
             combined = Image.alpha_composite(image.convert("RGBA"), heatmap_rgba).convert(

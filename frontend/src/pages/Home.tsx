@@ -352,9 +352,6 @@ export default function Home(): JSX.Element {
             >
               {jobId}
             </span>
-            <button type="button" className="status__copy-btn" onClick={handleCopyJobId}>
-              Скопировать
-            </button>
             {copyFeedback && <span className="status__copy-feedback">{copyFeedback}</span>}
           </div>
         )}
@@ -445,12 +442,6 @@ export default function Home(): JSX.Element {
               <dt>Уверенность модели</dt>
               <dd>{(result.confidence * 100).toFixed(1)}%</dd>
             </div>
-            {result.created_at && (
-              <div className="result__grid-item">
-                <dt>Дата анализа</dt>
-                <dd>{formatDate(result.created_at)}</dd>
-              </div>
-            )}
           </dl>
 
           {result.gradcam_url && (

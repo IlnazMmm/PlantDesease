@@ -3,9 +3,12 @@ import Home from "./pages/Home";
 
 const App: React.FC = () => {
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-3xl mx-auto">
-        <h1 className="text-3xl font-bold mb-4">Plant Disease Detector</h1>
+    <div className="app">
+      <div className="app__inner">
+        <h1 className="app__title">Plant Disease Detector</h1>
+        <p className="app__subtitle">
+          Upload a plant leaf photo to let the model predict the disease and suggested treatment.
+        </p>
         <Home />
       </div>
     </div>

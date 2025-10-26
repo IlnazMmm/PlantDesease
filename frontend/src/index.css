@@ -208,6 +208,31 @@ body {
   color: #475569;
 }
 
+.status__job-label {
+  font-weight: 600;
+}
+
+.status__job-id {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  padding: 4px 8px;
+  border-radius: 8px;
+  background-color: transparent;
+  transition: background-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+  cursor: pointer;
+}
+
+.status__job-id:hover,
+.status__job-id:focus-visible {
+  background-color: rgba(37, 99, 235, 0.12);
+  color: #1d4ed8;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+  outline: none;
+}
+
+.status__job-id:active {
+  background-color: rgba(37, 99, 235, 0.18);
+}
+
 .status__copy-btn {
   border: none;
   background: none;

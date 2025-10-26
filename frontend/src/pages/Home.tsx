@@ -72,6 +72,7 @@ export default function Home(): JSX.Element {
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const analysisAnchorRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     return () => {
@@ -198,9 +199,12 @@ export default function Home(): JSX.Element {
   );
 
   const handleHistorySelect = useCallback(
-    (id: string) => {
+    async (id: string) => {
       setLookupId(id);
-      fetchResultById(id);
+      await fetchResultById(id);
+      if (analysisAnchorRef.current) {
+        analysisAnchorRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
     },
     [fetchResultById]
   );
@@ -331,7 +335,23 @@ export default function Home(): JSX.Element {
         </span>
         {jobId && (
           <div className="status__job">
-            <span>ID задачи: {jobId}</span>
+            <span className="status__job-label">ID задачи:</span>
+            <span
+              className="status__job-id"
+              role="button"
+              tabIndex={0}
+              title="Скопировать ID задачи"
+              aria-label="Скопировать ID задачи"
+              onClick={handleCopyJobId}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  handleCopyJobId();
+                }
+              }}
+            >
+              {jobId}
+            </span>
             <button type="button" className="status__copy-btn" onClick={handleCopyJobId}>
               Скопировать
             </button>
@@ -371,7 +391,7 @@ export default function Home(): JSX.Element {
   };
 
   return (
-    <div className="card">
+    <div className="card" ref={analysisAnchorRef}>
       <div className="field">
         <label htmlFor="image-upload" className="field__label">
           Изображение растения
@@ -529,7 +549,9 @@ export default function Home(): JSX.Element {
                 <button
                   type="button"
                   className="button button--ghost"
-                  onClick={() => handleHistorySelect(item.job_id)}
+                  onClick={() => {
+                    void handleHistorySelect(item.job_id);
+                  }}
                   disabled={isLookupLoading}
                 >
                   Открыть

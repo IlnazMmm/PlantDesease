@@ -69,12 +69,17 @@ export default function Home(): JSX.Element {
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const [lookupId, setLookupId] = useState("");
   const [isLookupLoading, setIsLookupLoading] = useState(false);
+  const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     return () => {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
+      }
+      if (copyTimeoutRef.current) {
+        clearTimeout(copyTimeoutRef.current);
       }
     };
   }, []);
@@ -85,6 +90,14 @@ export default function Home(): JSX.Element {
       intervalRef.current = null;
     }
   }, []);
+
+  useEffect(() => {
+    if (copyTimeoutRef.current) {
+      clearTimeout(copyTimeoutRef.current);
+      copyTimeoutRef.current = null;
+    }
+    setCopyFeedback(null);
+  }, [jobId]);
 
   const getErrorMessage = useCallback((err: unknown, fallback: string) => {
     if (axios.isAxiosError(err)) {
@@ -192,6 +205,45 @@ export default function Home(): JSX.Element {
     [fetchResultById]
   );
 
+  const handleCopyJobId = useCallback(async () => {
+    if (!jobId) {
+      return;
+    }
+
+    const setMessage = (message: string) => {
+      setCopyFeedback(message);
+      if (copyTimeoutRef.current) {
+        clearTimeout(copyTimeoutRef.current);
+      }
+      copyTimeoutRef.current = setTimeout(() => {
+        setCopyFeedback(null);
+        copyTimeoutRef.current = null;
+      }, 2000);
+    };
+
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(jobId);
+        setMessage("ID скопирован");
+        return;
+      }
+
+      const textarea = document.createElement("textarea");
+      textarea.value = jobId;
+      textarea.setAttribute("readonly", "");
+      textarea.style.position = "absolute";
+      textarea.style.left = "-9999px";
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textarea);
+      setMessage("ID скопирован");
+    } catch (err) {
+      console.error("Failed to copy job id", err);
+      setMessage("Не удалось скопировать");
+    }
+  }, [jobId]);
+
   const upload = async (): Promise<string | null> => {
     if (!file) {
       setError("Пожалуйста, выберите изображение растения для анализа.");
@@ -277,7 +329,15 @@ export default function Home(): JSX.Element {
         <span className={`status__badge status__badge--${config?.tone ?? "info"}`}>
           {config?.label ?? status}
         </span>
-        {jobId && <span className="status__job">ID задачи: {jobId}</span>}
+        {jobId && (
+          <div className="status__job">
+            <span>ID задачи: {jobId}</span>
+            <button type="button" className="status__copy-btn" onClick={handleCopyJobId}>
+              Скопировать
+            </button>
+            {copyFeedback && <span className="status__copy-feedback">{copyFeedback}</span>}
+          </div>
+        )}
       </div>
     );
   };
@@ -349,12 +409,6 @@ export default function Home(): JSX.Element {
             </div>
           )}
           <dl className="result__grid">
-            {result.job_id && (
-              <div className="result__grid-item">
-                <dt>ID задачи</dt>
-                <dd>{result.job_id}</dd>
-              </div>
-            )}
             <div className="result__grid-item">
               <dt>Растение</dt>
               <dd>{result.plant}</dd>
@@ -363,12 +417,6 @@ export default function Home(): JSX.Element {
               <dt>Заболевание</dt>
               <dd>{result.disease}</dd>
             </div>
-            {result.label && (
-              <div className="result__grid-item">
-                <dt>Класс модели</dt>
-                <dd>{result.label}</dd>
-              </div>
-            )}
             <div
               className={`result__grid-item result__grid-item--confidence result__grid-item--confidence-${getConfidenceTone(
                 result.confidence

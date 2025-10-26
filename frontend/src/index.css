@@ -201,8 +201,39 @@ body {
 }
 
 .status__job {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   font-size: 0.9rem;
   color: #475569;
+}
+
+.status__copy-btn {
+  border: none;
+  background: none;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #2563eb;
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.status__copy-btn:hover,
+.status__copy-btn:focus-visible {
+  background-color: rgba(37, 99, 235, 0.1);
+  color: #1d4ed8;
+  outline: none;
+}
+
+.status__copy-btn:active {
+  background-color: rgba(37, 99, 235, 0.2);
+}
+
+.status__copy-feedback {
+  font-size: 0.8rem;
+  color: #0f172a;
 }
 
 .result {

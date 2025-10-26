@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import axios from "axios";
 import api, { API_BASE_URL } from "../services/api";
 
@@ -12,6 +12,18 @@ type PredictionResult = {
   prevention?: string;
   pathogen?: string;
   label?: string;
+  job_id?: string;
+  created_at?: string;
+};
+
+type HistoryItem = {
+  job_id: string;
+  plant?: string;
+  disease?: string;
+  confidence?: number;
+  gradcam_url?: string | null;
+  created_at?: string;
+  label?: string | null;
 };
 
 type JobStatus = "queued" | "processing" | "done" | "error" | "saved" | null;
@@ -52,6 +64,11 @@ export default function Home(): JSX.Element {
   const [result, setResult] = useState<PredictionResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [isHistoryLoading, setIsHistoryLoading] = useState(false);
+  const [lookupId, setLookupId] = useState("");
+  const [isLookupLoading, setIsLookupLoading] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -62,14 +79,14 @@ export default function Home(): JSX.Element {
     };
   }, []);
 
-  const clearPolling = () => {
+  const clearPolling = useCallback(() => {
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
       intervalRef.current = null;
     }
-  };
+  }, []);
 
-  const getErrorMessage = (err: unknown, fallback: string) => {
+  const getErrorMessage = useCallback((err: unknown, fallback: string) => {
     if (axios.isAxiosError(err)) {
       const responseData = err.response?.data;
       if (typeof responseData === "string") {
@@ -84,7 +101,96 @@ export default function Home(): JSX.Element {
       return err.message || fallback;
     }
     return fallback;
-  };
+  }, []);
+
+  const fetchHistory = useCallback(
+    async (options?: { limit?: number }) => {
+      try {
+        setHistoryError(null);
+        setIsHistoryLoading(true);
+        const res = await api.get("/api/v1/history", {
+          params: { limit: options?.limit ?? 10 },
+        });
+        const items = Array.isArray(res.data) ? (res.data as HistoryItem[]) : [];
+        setHistory(items);
+      } catch (err) {
+        setHistoryError(getErrorMessage(err, "Не удалось загрузить историю анализов."));
+      } finally {
+        setIsHistoryLoading(false);
+      }
+    },
+    [getErrorMessage]
+  );
+
+  useEffect(() => {
+    fetchHistory();
+  }, [fetchHistory]);
+
+  const applyResultPayload = useCallback(
+    (payload: (PredictionResult & { status?: string }) | null | undefined, id: string, options?: { pendingMessage?: string }) => {
+      if (!payload) {
+        return false;
+      }
+
+      if (typeof payload.status === "string" && payload.status !== "done") {
+        setStatus(normalizeStatus(payload.status));
+        setResult(null);
+        setJobId(id);
+        setError(options?.pendingMessage ?? "Задача ещё выполняется. Попробуйте позже.");
+        return false;
+      }
+
+      const { status: _ignored, ...rest } = payload as PredictionResult & { status?: string };
+      setResult(rest as PredictionResult);
+      setStatus("done");
+      setJobId(id);
+      setError(null);
+      return true;
+    },
+    []
+  );
+
+  const fetchResultById = useCallback(
+    async (id: string) => {
+      const trimmed = id.trim();
+      if (!trimmed) {
+        setError("Укажите ID задачи для поиска.");
+        return;
+      }
+
+      clearPolling();
+      setIsSubmitting(false);
+      setIsLookupLoading(true);
+      try {
+        const response = await api.get(`/api/v1/result/${trimmed}`);
+        const success = applyResultPayload(response.data as PredictionResult & { status?: string }, trimmed);
+        if (success) {
+          fetchHistory();
+        }
+      } catch (err) {
+        setError(getErrorMessage(err, "Не удалось получить результат по указанному ID."));
+      } finally {
+        setIsLookupLoading(false);
+      }
+    },
+    [applyResultPayload, clearPolling, fetchHistory, getErrorMessage]
+  );
+
+  const handleLookupSubmit = useCallback(
+    async (event: React.FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      await fetchResultById(lookupId);
+    },
+    [fetchResultById, lookupId]
+  );
+
+  const handleHistorySelect = useCallback(
+    (id: string) => {
+      setLookupId(id);
+      fetchResultById(id);
+    },
+    [fetchResultById]
+  );
 
   const upload = async (): Promise<string | null> => {
     if (!file) {
@@ -116,7 +222,8 @@ export default function Home(): JSX.Element {
         if (nextStatus === "done") {
           clearPolling();
           const r = await api.get(`/api/v1/result/${jid}`);
-          setResult(r.data);
+          applyResultPayload(r.data as PredictionResult & { status?: string }, jid);
+          fetchHistory();
           setIsSubmitting(false);
         }
 
@@ -187,6 +294,22 @@ export default function Home(): JSX.Element {
     return "low";
   };
 
+  const formatDate = (iso?: string | null) => {
+    if (!iso) {
+      return "";
+    }
+
+    const date = new Date(iso);
+    if (Number.isNaN(date.getTime())) {
+      return "";
+    }
+
+    return date.toLocaleString("ru-RU", {
+      dateStyle: "short",
+      timeStyle: "short",
+    });
+  };
+
   return (
     <div className="card">
       <div className="field">
@@ -226,6 +349,12 @@ export default function Home(): JSX.Element {
             </div>
           )}
           <dl className="result__grid">
+            {result.job_id && (
+              <div className="result__grid-item">
+                <dt>ID задачи</dt>
+                <dd>{result.job_id}</dd>
+              </div>
+            )}
             <div className="result__grid-item">
               <dt>Растение</dt>
               <dd>{result.plant}</dd>
@@ -234,6 +363,12 @@ export default function Home(): JSX.Element {
               <dt>Заболевание</dt>
               <dd>{result.disease}</dd>
             </div>
+            {result.label && (
+              <div className="result__grid-item">
+                <dt>Класс модели</dt>
+                <dd>{result.label}</dd>
+              </div>
+            )}
             <div
               className={`result__grid-item result__grid-item--confidence result__grid-item--confidence-${getConfidenceTone(
                 result.confidence
@@ -242,6 +377,12 @@ export default function Home(): JSX.Element {
               <dt>Уверенность модели</dt>
               <dd>{(result.confidence * 100).toFixed(1)}%</dd>
             </div>
+            {result.created_at && (
+              <div className="result__grid-item">
+                <dt>Дата анализа</dt>
+                <dd>{formatDate(result.created_at)}</dd>
+              </div>
+            )}
           </dl>
 
           {result.gradcam_url && (
@@ -280,6 +421,76 @@ export default function Home(): JSX.Element {
           )}
         </div>
       )}
+
+      <section className="history">
+        <div className="history__header">
+          <h2 className="history__title">История анализов</h2>
+          <button
+            type="button"
+            className="button button--ghost"
+            onClick={() => fetchHistory()}
+            disabled={isHistoryLoading}
+          >
+            {isHistoryLoading ? "Обновляем..." : "Обновить"}
+          </button>
+        </div>
+
+        <form className="history__lookup" onSubmit={handleLookupSubmit}>
+          <label className="history__label" htmlFor="history-lookup">
+            Найти результат по ID задачи
+          </label>
+          <div className="history__lookup-controls">
+            <input
+              id="history-lookup"
+              type="text"
+              value={lookupId}
+              onChange={(event) => setLookupId(event.target.value)}
+              placeholder="Введите ID задачи"
+            />
+            <button type="submit" className="button" disabled={isLookupLoading}>
+              {isLookupLoading ? "Ищем..." : "Найти"}
+            </button>
+          </div>
+          <p className="history__hint">Введите сохранённый идентификатор задачи, чтобы повторно открыть результат.</p>
+        </form>
+
+        {historyError && <div className="alert alert--error">{historyError}</div>}
+
+        {isHistoryLoading && <p className="history__loading">Загружаем историю...</p>}
+
+        {history.length === 0 && !isHistoryLoading ? (
+          <p className="history__empty">История пока пуста — выполните анализ, чтобы увидеть сохранённые результаты.</p>
+        ) : (
+          <ul className="history__list">
+            {history.map((item) => (
+              <li key={item.job_id} className="history__item">
+                <div className="history__item-main">
+                  <span className="history__job">{item.job_id}</span>
+                  {item.created_at && (
+                    <span className="history__meta">{formatDate(item.created_at)}</span>
+                  )}
+                </div>
+                <div className="history__item-details">
+                  <span className="history__plant">{item.plant ?? "Неизвестно"}</span>
+                  <span
+                    className={`history__confidence history__confidence--${getConfidenceTone(item.confidence ?? 0)}`}
+                  >
+                    {item.confidence != null ? `${(item.confidence * 100).toFixed(1)}%` : "—"}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className="button button--ghost"
+                  onClick={() => handleHistorySelect(item.job_id)}
+                  disabled={isLookupLoading}
+                >
+                  Открыть
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
     </div>
   );
 }

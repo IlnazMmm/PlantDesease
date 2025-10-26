@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import api, { API_BASE_URL } from "../services/api";
 
@@ -201,6 +201,9 @@ export default function Home(): JSX.Element {
   const handleHistorySelect = useCallback(
     async (id: string) => {
       setLookupId(id);
+      setResult(null);
+      setStatus(null);
+      setError(null);
       await fetchResultById(id);
       if (analysisAnchorRef.current) {
         analysisAnchorRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -387,6 +390,17 @@ export default function Home(): JSX.Element {
     });
   };
 
+  const gradcamSrc = useMemo(() => {
+    if (!result?.gradcam_url) {
+      return null;
+    }
+
+    const cacheKey = encodeURIComponent(result.job_id ?? result.gradcam_url);
+    const separator = result.gradcam_url.includes("?") ? "&" : "?";
+
+    return `${API_BASE_URL}${result.gradcam_url}${separator}v=${cacheKey}`;
+  }, [result?.gradcam_url, result?.job_id]);
+
   return (
     <div className="card" ref={analysisAnchorRef}>
       <div className="field">
@@ -444,9 +458,13 @@ export default function Home(): JSX.Element {
             </div>
           </dl>
 
-          {result.gradcam_url && (
+          {gradcamSrc && (
             <figure className="result__figure">
-              <img src={`${API_BASE_URL}${result.gradcam_url}`} alt="Grad-CAM visualization" />
+              <img
+                key={result.job_id ?? result.gradcam_url}
+                src={gradcamSrc}
+                alt="Grad-CAM visualization"
+              />
               <figcaption>Тепловая карта уязвимых участков листа.</figcaption>
             </figure>
           )}

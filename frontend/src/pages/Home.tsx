@@ -16,6 +16,10 @@ type PredictionResult = {
 
 type JobStatus = "queued" | "processing" | "done" | "error" | "saved" | null;
 
+const CONFIDENCE_WARNING_THRESHOLD = 0.6;
+
+type ConfidenceTone = "high" | "medium" | "low";
+
 const STATUS_COPY: Record<Exclude<JobStatus, null>, { label: string; tone: "warning" | "info" | "success" | "danger" }> = {
   queued: { label: "Queued", tone: "warning" },
   processing: { label: "Processing", tone: "info" },
@@ -171,6 +175,18 @@ export default function Home(): JSX.Element {
     );
   };
 
+  const getConfidenceTone = (confidence: number): ConfidenceTone => {
+    if (confidence >= 0.8) {
+      return "high";
+    }
+
+    if (confidence >= CONFIDENCE_WARNING_THRESHOLD) {
+      return "medium";
+    }
+
+    return "low";
+  };
+
   return (
     <div className="card">
       <div className="field">
@@ -203,16 +219,26 @@ export default function Home(): JSX.Element {
       {result && (
         <div className="result">
           <h2 className="result__title">Результат анализа</h2>
+          {result.confidence < CONFIDENCE_WARNING_THRESHOLD && (
+            <div className="alert alert--warning">
+              Уверенность модели ниже {Math.round(CONFIDENCE_WARNING_THRESHOLD * 100)}%. Проверьте качество
+              изображения и попробуйте сделать новый снимок листа под лучшим освещением.
+            </div>
+          )}
           <dl className="result__grid">
-            <div>
+            <div className="result__grid-item">
               <dt>Растение</dt>
               <dd>{result.plant}</dd>
             </div>
-            <div>
+            <div className="result__grid-item">
               <dt>Заболевание</dt>
               <dd>{result.disease}</dd>
             </div>
-            <div>
+            <div
+              className={`result__grid-item result__grid-item--confidence result__grid-item--confidence-${getConfidenceTone(
+                result.confidence
+              )}`}
+            >
               <dt>Уверенность модели</dt>
               <dd>{(result.confidence * 100).toFixed(1)}%</dd>
             </div>

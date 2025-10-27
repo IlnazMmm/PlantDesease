@@ -1,242 +1,82 @@
-import React, { useEffect, useRef, useState } from "react";
-import axios from "axios";
-import api, { API_BASE_URL } from "../services/api";
+import React, { useCallback, useEffect, useRef } from "react";
 
-type PredictionResult = {
-  plant: string;
-  disease: string;
-  confidence: number;
-  gradcam_url?: string;
-  description?: string;
-  treatment?: string;
-};
-
-type JobStatus = "queued" | "processing" | "done" | "error" | "saved" | null;
-
-const STATUS_COPY: Record<Exclude<JobStatus, null>, { label: string; tone: "warning" | "info" | "success" | "danger" }> = {
-  queued: { label: "Queued", tone: "warning" },
-  processing: { label: "Processing", tone: "info" },
-  done: { label: "Completed", tone: "success" },
-  error: { label: "Failed", tone: "danger" },
-  saved: { label: "Saved", tone: "success" },
-};
-
-const normalizeStatus = (value: unknown): JobStatus => {
-  if (typeof value !== "string") {
-    return null;
-  }
-
-  const lookup: Record<string, JobStatus> = {
-    queued: "queued",
-    processing: "processing",
-    running: "processing",
-    done: "done",
-    error: "error",
-    saved: "saved",
-  };
-
-  return lookup[value] ?? null;
-};
+import { HistoryPanel } from "../components/HistoryPanel";
+import { ResultPanel } from "../components/ResultPanel";
+import { StatusBanner } from "../components/StatusBanner";
+import { UploadSection } from "../components/UploadSection";
+import { useHistory } from "../hooks/useHistory";
+import { usePrediction } from "../hooks/usePrediction";
 
 export default function Home(): JSX.Element {
-  const [file, setFile] = useState<File | null>(null);
-  const [jobId, setJobId] = useState<string | null>(null);
-  const [status, setStatus] = useState<JobStatus>(null);
-  const [result, setResult] = useState<PredictionResult | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const refreshHistoryRef = useRef<(() => void) | undefined>();
+
+  const prediction = usePrediction({
+    onResultLoaded: () => {
+      if (refreshHistoryRef.current) {
+        refreshHistoryRef.current();
+      }
+    },
+  });
+
+  const history = useHistory({
+    loadResult: prediction.actions.loadResult,
+    analysisAnchorRef: prediction.refs.analysisAnchorRef,
+  });
 
   useEffect(() => {
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
+    refreshHistoryRef.current = () => {
+      void history.actions.refreshHistory();
     };
-  }, []);
+  }, [history.actions.refreshHistory]);
 
-  const clearPolling = () => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
-  };
+  const {
+    state: { file, jobId, status, result, error, isSubmitting, copyFeedback },
+    actions: { setFile, startPrediction, copyJobId },
+    derived: { gradcamSrc },
+    refs: { analysisAnchorRef },
+  } = prediction;
 
-  const getErrorMessage = (err: unknown, fallback: string) => {
-    if (axios.isAxiosError(err)) {
-      const responseData = err.response?.data;
-      if (typeof responseData === "string") {
-        return responseData;
-      }
-      if (responseData && typeof responseData === "object" && "message" in responseData) {
-        const message = (responseData as { message?: unknown }).message;
-        if (typeof message === "string") {
-          return message;
-        }
-      }
-      return err.message || fallback;
-    }
-    return fallback;
-  };
+  const {
+    state: { history: historyItems, historyError, isHistoryLoading, lookupId, isLookupLoading },
+    actions: { setLookupId, refreshHistory, lookupById, openFromHistory },
+  } = history;
 
-  const upload = async (): Promise<string | null> => {
-    if (!file) {
-      setError("Пожалуйста, выберите изображение растения для анализа.");
-      return null;
-    }
+  const handleLookupSubmit = useCallback(
+    (event: React.FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      void lookupById();
+    },
+    [lookupById]
+  );
 
-    const fd = new FormData();
-    fd.append("file", file);
-
-    try {
-      const res = await api.post("/api/v1/upload", fd, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
-      return res.data.file_id as string;
-    } catch (err) {
-      setError(getErrorMessage(err, "Не удалось загрузить изображение."));
-      return null;
-    }
-  };
-
-  const poll = (jid: string) => {
-    intervalRef.current = setInterval(async () => {
-      try {
-        const s = await api.get(`/api/v1/status/${jid}`);
-        const nextStatus = normalizeStatus(s.data.status);
-        setStatus(nextStatus);
-
-        if (nextStatus === "done") {
-          clearPolling();
-          const r = await api.get(`/api/v1/result/${jid}`);
-          setResult(r.data);
-          setIsSubmitting(false);
-        }
-
-        if (nextStatus === "error") {
-          clearPolling();
-          setStatus("error");
-          setError("Произошла ошибка при обработке задачи. Попробуйте еще раз.");
-          setIsSubmitting(false);
-        }
-      } catch (err) {
-        clearPolling();
-        setError(getErrorMessage(err, "Не удалось получить статус задачи."));
-        setIsSubmitting(false);
-      }
-    }, 1000);
-  };
-
-  const handleRun = async () => {
-    setError(null);
-    setResult(null);
-    setStatus(null);
-    clearPolling();
-    setIsSubmitting(true);
-
-    const fileId = await upload();
-    if (!fileId) {
-      setIsSubmitting(false);
-      return;
-    }
-
-    try {
-      const job = await api.post("/api/v1/predict", { file_id: fileId, model_version: "v1" });
-      setJobId(job.data.job_id);
-      setStatus("queued");
-      poll(job.data.job_id);
-    } catch (err) {
-      setError(getErrorMessage(err, "Не удалось запустить анализ."));
-      setIsSubmitting(false);
-    }
-  };
-
-  const renderStatus = () => {
-    if (!status) {
-      return null;
-    }
-
-    const config = STATUS_COPY[status];
-
-    return (
-      <div className="status">
-        <span className={`status__badge status__badge--${config?.tone ?? "info"}`}>
-          {config?.label ?? status}
-        </span>
-        {jobId && <span className="status__job">ID задачи: {jobId}</span>}
-      </div>
-    );
-  };
+  const handleOpenHistory = useCallback(
+    (id: string) => {
+      void openFromHistory(id);
+    },
+    [openFromHistory]
+  );
 
   return (
-    <div className="card">
-      <div className="field">
-        <label htmlFor="image-upload" className="field__label">
-          Изображение растения
-        </label>
-        <input
-          id="image-upload"
-          className="field__input"
-          type="file"
-          accept="image/*"
-          onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-        />
-        <p className="field__hint">Поддерживаются изображения в форматах JPG, PNG или JPEG.</p>
-      </div>
-
-      <div className="actions">
-        <button className="button" onClick={handleRun} disabled={isSubmitting || !file}>
-          {isSubmitting ? "Анализируем..." : "Анализировать"}
-        </button>
-        <p className="actions__info">
-          После загрузки мы будем периодически проверять статус задачи и покажем результат сразу, как он появится.
-        </p>
-      </div>
+    <div className="card" ref={analysisAnchorRef}>
+      <UploadSection file={file} onFileChange={setFile} onSubmit={startPrediction} isSubmitting={isSubmitting} />
 
       {error && <div className="alert alert--error">{error}</div>}
 
-      {renderStatus()}
+      <StatusBanner status={status} jobId={jobId} onCopy={copyJobId} copyFeedback={copyFeedback} />
 
-      {result && (
-        <div className="result">
-          <h2 className="result__title">Результат анализа</h2>
-          <dl className="result__grid">
-            <div>
-              <dt>Растение</dt>
-              <dd>{result.plant}</dd>
-            </div>
-            <div>
-              <dt>Заболевание</dt>
-              <dd>{result.disease}</dd>
-            </div>
-            <div>
-              <dt>Уверенность модели</dt>
-              <dd>{(result.confidence * 100).toFixed(1)}%</dd>
-            </div>
-          </dl>
+      <ResultPanel result={result} gradcamSrc={gradcamSrc} />
 
-          {result.gradcam_url && (
-            <figure className="result__figure">
-              <img src={`${API_BASE_URL}${result.gradcam_url}`} alt="Grad-CAM visualization" />
-              <figcaption>Тепловая карта уязвимых участков листа.</figcaption>
-            </figure>
-          )}
-
-          {result.description && (
-            <section className="result__section">
-              <h3>Описание</h3>
-              <p>{result.description}</p>
-            </section>
-          )}
-
-          {result.treatment && (
-            <section className="result__section">
-              <h3>Рекомендации по лечению</h3>
-              <p>{result.treatment}</p>
-            </section>
-          )}
-        </div>
-      )}
+      <HistoryPanel
+        history={historyItems}
+        historyError={historyError}
+        isHistoryLoading={isHistoryLoading}
+        lookupId={lookupId}
+        onLookupIdChange={setLookupId}
+        onLookupSubmit={handleLookupSubmit}
+        onRefresh={refreshHistory}
+        onOpen={handleOpenHistory}
+        isLookupLoading={isLookupLoading}
+      />
     </div>
   );
 }

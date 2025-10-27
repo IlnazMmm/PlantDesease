@@ -42,7 +42,7 @@ def _prepare_device(device_name: str) -> torch.device:
 def _create_scheduler(optimizer: optim.Optimizer, patience: int) -> Optional[ReduceLROnPlateau]:
     if patience <= 0:
         return None
-    return ReduceLROnPlateau(optimizer, mode="max", patience=patience, factor=0.5, verbose=True)
+    return ReduceLROnPlateau(optimizer, mode="max", patience=patience, factor=0.5)
 
 
 def _save_checkpoint(out_path: Path, state_dict: dict, class_names: tuple[str, ...], history: list[dict], config: TrainConfig) -> None:

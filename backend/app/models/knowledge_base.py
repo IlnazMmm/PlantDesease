@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import lru_cache
 from importlib import resources
 from typing import Mapping, MutableMapping
@@ -48,7 +48,9 @@ class AdviceRepository:
     """Provides read-only access to curated plant disease advice."""
 
     _advice_map: Mapping[str, PlantDiseaseAdvice]
-    _default: PlantDiseaseAdvice = DEFAULT_ADVICE
+    _default: PlantDiseaseAdvice = field(
+        default_factory=lambda: PlantDiseaseAdvice(DEFAULT_ADVICE)
+    )
 
     @classmethod
     def from_json_resource(cls, package: str, resource_name: str) -> "AdviceRepository":
@@ -72,7 +74,7 @@ class AdviceRepository:
 
 @lru_cache(maxsize=1)
 def get_repository() -> AdviceRepository:
-    return AdviceRepository.from_json_resource("backend.app.data", "plant_advice.json")
+    return AdviceRepository.from_json_resource("app.data", "plant_advice.json")
 
 
 def get_advice_for_label(label: str) -> PlantDiseaseAdvice:

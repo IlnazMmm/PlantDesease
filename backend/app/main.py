@@ -62,7 +62,7 @@ app = FastAPI(title="Plant Disease Detection API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://87.228.99.74"],  # restrict in prod
+    allow_origins=["*"],  # restrict in prod
     allow_methods=["*"],
     allow_headers=["*"],
 )

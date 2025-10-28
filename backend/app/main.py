@@ -60,11 +60,19 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Plant Disease Detection API")
 
+allowed_origins = {
+    "http://localhost:3000",
+    "http://87.228.99.74",
+    "http://87.228.99.74:3000",
+    "https://87.228.99.74",
+}
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # restrict in prod
-    allow_methods=["*"],
+    allow_origins=list(allowed_origins),
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
+    allow_credentials=True,
 )
 
 

@@ -9,7 +9,7 @@ from typing import Any, Dict, Tuple
 from src.infer import load_model, predict
 
 
-DEFAULT_WEIGHTS_PATH = "./ml/models/model_v3.pth" #Path(__file__).resolve().parents[3] / "ml" / "models" / "model_v3.pth"
+DEFAULT_WEIGHTS_PATH = "./ml/models/model_v4.pth" #Path(__file__).resolve().parents[3] / "ml" / "models" / "model_v3.pth"
 
 
 @dataclass(frozen=True)

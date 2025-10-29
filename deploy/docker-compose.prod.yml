@@ -1,0 +1,24 @@
+version: "3.9"
+
+services:
+  backend:
+    build:
+      context: ../backend
+    container_name: plant-backend
+    environment:
+      - UVICORN_PORT=8000
+    expose:
+      - "8000"
+
+  frontend:
+    build:
+      context: ../frontend
+    container_name: plant-frontend
+    depends_on:
+      - backend
+    ports:
+      - "${FRONTEND_PORT:-8080}:80"
+
+networks:
+  default:
+    name: plantdesease

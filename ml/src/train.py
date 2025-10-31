@@ -1,101 +1,151 @@
-"""
-Minimal PyTorch training script for ImageFolder dataset.
-Usage:
-  python train.py --data ./ml/data/plantvillage_resized --epochs 3 --out ./ml/models/model_v1.pth
-"""
+"""Command-line training entrypoint for the plant disease classifier."""
+
+from __future__ import annotations
 
 import argparse
+from dataclasses import asdict, dataclass
 from pathlib import Path
+from typing import Optional
+
 import torch
 from torch import nn, optim
-from torchvision import datasets, transforms, models
-from torch.utils.data import DataLoader
-import time
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 
-def train(data_dir, epochs, out_path, device="cpu"):
-    device = torch.device(device)
+from data_utils import DataLoaders, create_dataloaders
+from model_utils import build_efficientnet_b0, trainable_parameters
+from trainer import Trainer
 
-    # Трансформации для train и valid
-    train_tfms = transforms.Compose([
-        transforms.RandomResizedCrop(224),
-        transforms.RandomHorizontalFlip(),
-        transforms.ToTensor(),
-        transforms.Normalize([0.485,0.456,0.406],[0.229,0.224,0.225])
-    ])
-    valid_tfms = transforms.Compose([
-        transforms.Resize((224,224)),
-        transforms.ToTensor(),
-        transforms.Normalize([0.485,0.456,0.406],[0.229,0.224,0.225])
-    ])
 
-    # Поддиректории
-    data_dir = Path(data_dir)
-    train_dir = data_dir / "train"
-    valid_dir = data_dir / "valid"
+@dataclass
+class TrainConfig:
+    data_dir: Path
+    epochs: int
+    out_path: Path
+    device: str
+    batch_size: int = 32
+    lr: float = 1e-4
+    weight_decay: float = 0.0
+    num_workers: int = 4
+    image_size: int = 224
+    use_pretrained: bool = True
+    freeze_backbone: bool = False
+    valid_fraction: Optional[float] = None
+    scheduler_patience: int = 2
 
-    # Датасеты
-    train_ds = datasets.ImageFolder(train_dir, transform=train_tfms)
-    valid_ds = datasets.ImageFolder(valid_dir, transform=valid_tfms)
 
-    classes = train_ds.classes
-    print("Classes:", classes)
+def _prepare_device(device_name: str) -> torch.device:
+    if device_name == "cuda" and not torch.cuda.is_available():
+        raise RuntimeError("CUDA requested but not available. Choose --device cpu instead.")
+    return torch.device(device_name)
 
-    # DataLoader
-    train_loader = DataLoader(train_ds, batch_size=32, shuffle=True, num_workers=4)
-    valid_loader = DataLoader(valid_ds, batch_size=32, shuffle=False, num_workers=4)
 
-    # Модель
-    model = models.efficientnet_b0(pretrained=True)
-    model.classifier[1] = nn.Linear(model.classifier[1].in_features, len(classes))
-    model = model.to(device)
+def _create_scheduler(optimizer: optim.Optimizer, patience: int) -> Optional[ReduceLROnPlateau]:
+    if patience <= 0:
+        return None
+    return ReduceLROnPlateau(optimizer, mode="max", patience=patience, factor=0.5)
 
-    # Оптимизатор и лосс
-    criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=1e-4)
 
-    # Обучение
-    for epoch in range(epochs):
-        model.train()
-        running_loss = 0.0
-        start = time.time()
-        for xb, yb in train_loader:
-            xb, yb = xb.to(device), yb.to(device)
-            optimizer.zero_grad()
-            out = model(xb)
-            loss = criterion(out, yb)
-            loss.backward()
-            optimizer.step()
-            running_loss += loss.item() * xb.size(0)
-        epoch_loss = running_loss / len(train_ds)
-
-        # Валидация
-        model.eval()
-        correct, total = 0, 0
-        with torch.no_grad():
-            for xb, yb in valid_loader:
-                xb, yb = xb.to(device), yb.to(device)
-                out = model(xb)
-                preds = out.argmax(1)
-                correct += (preds == yb).sum().item()
-                total += yb.size(0)
-        acc = correct / total
-
-        print(f"Epoch {epoch+1}/{epochs} "
-              f"loss={epoch_loss:.4f} "
-              f"val_acc={acc:.3f} "
-              f"time={(time.time()-start):.1f}s")
-
-    # Сохранение
-    out_path = Path(out_path)
+def _save_checkpoint(out_path: Path, state_dict: dict, class_names: tuple[str, ...], history: list[dict], config: TrainConfig) -> None:
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    torch.save({"model_state": model.state_dict(), "classes": classes}, out_path)
-    print("Saved model to", out_path)
+    cpu_state = {key: value.cpu() for key, value in state_dict.items()}
+    torch.save(
+        {
+            "model_state": cpu_state,
+            "classes": class_names,
+            "history": history,
+            "config": asdict(config),
+        },
+        out_path,
+    )
+    print(f"Saved best model to {out_path}")
+
+
+def train_model(config: TrainConfig) -> None:
+    device = _prepare_device(config.device)
+    print(f"Using device: {device}")
+
+    dataloaders: DataLoaders = create_dataloaders(
+        data_root=config.data_dir,
+        batch_size=config.batch_size,
+        num_workers=config.num_workers,
+        image_size=config.image_size,
+        valid_fraction=config.valid_fraction,
+    )
+
+    model = build_efficientnet_b0(
+        num_classes=len(dataloaders.class_names),
+        pretrained=config.use_pretrained,
+        freeze_backbone=config.freeze_backbone,
+    ).to(device)
+
+    criterion = nn.CrossEntropyLoss()
+    optimizer = optim.Adam(
+        trainable_parameters(model),
+        lr=config.lr,
+        weight_decay=config.weight_decay,
+    )
+    scheduler = _create_scheduler(optimizer, config.scheduler_patience)
+
+    trainer = Trainer(model, criterion, optimizer, device, scheduler=scheduler)
+    best_state, history = trainer.fit(
+        epochs=config.epochs,
+        train_loader=dataloaders.train,
+        valid_loader=dataloaders.valid,
+    )
+
+    _save_checkpoint(
+        out_path=config.out_path,
+        state_dict=best_state,
+        class_names=dataloaders.class_names,
+        history=history.to_serializable(),
+        config=config,
+    )
+
+
+def _parse_args() -> TrainConfig:
+    parser = argparse.ArgumentParser(description="Train an EfficientNet-based plant disease classifier.")
+    parser.add_argument("--data", required=True, help="Path to dataset root containing train/ and valid/ folders")
+    parser.add_argument("--epochs", type=int, default=10, help="Number of training epochs")
+    parser.add_argument("--out", required=True, help="Output path for the trained model checkpoint")
+    parser.add_argument("--device", default="cpu", choices=["cpu", "cuda"], help="Device to run training on")
+    parser.add_argument("--batch-size", type=int, default=32, help="Batch size for training")
+    parser.add_argument("--lr", type=float, default=1e-4, help="Learning rate")
+    parser.add_argument("--weight-decay", type=float, default=0.0, help="Weight decay for optimizer")
+    parser.add_argument("--num-workers", type=int, default=4, help="Number of dataloader workers")
+    parser.add_argument("--image-size", type=int, default=224, help="Input image size")
+    parser.add_argument("--no-pretrained", action="store_true", help="Disable ImageNet pretrained weights")
+    parser.add_argument("--freeze-backbone", action="store_true", help="Freeze EfficientNet feature extractor")
+    parser.add_argument(
+        "--valid-fraction",
+        type=float,
+        default=None,
+        help="If provided, create a validation split from train/ when valid/ directory is absent",
+    )
+    parser.add_argument(
+        "--scheduler-patience",
+        type=int,
+        default=2,
+        help="Patience for ReduceLROnPlateau scheduler; set 0 to disable",
+    )
+
+    args = parser.parse_args()
+    return TrainConfig(
+        data_dir=Path(args.data),
+        epochs=args.epochs,
+        out_path=Path(args.out),
+        device=args.device,
+        batch_size=args.batch_size,
+        lr=args.lr,
+        weight_decay=args.weight_decay,
+        num_workers=args.num_workers,
+        image_size=args.image_size,
+        use_pretrained=not args.no_pretrained,
+        freeze_backbone=args.freeze_backbone,
+        valid_fraction=args.valid_fraction,
+        scheduler_patience=args.scheduler_patience,
+    )
+
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--data", required=True)  # путь до "New Plant Diseases Dataset(Augmented)"
-    parser.add_argument("--epochs", type=int, default=3)
-    parser.add_argument("--out", required=True)
-    parser.add_argument("--device", default="cpu")
-    args = parser.parse_args()
-    train(args.data, args.epochs, args.out, device=args.device)
+    train_model(_parse_args())
+

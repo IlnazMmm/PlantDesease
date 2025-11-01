@@ -19,6 +19,22 @@ services:
       timeout: 5s
       retries: 5
 
+  migrator:
+    build: ./backend
+    container_name: migrator
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PYTHONUNBUFFERED: "1"
+      POSTGRES_HOST: ${POSTGRES_HOST}
+      POSTGRES_PORT: ${POSTGRES_PORT}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    command: ["python", "-m", "app.migrate"]
+    restart: "no"
+
   backend:
     build: ./backend
     container_name: backend
@@ -26,6 +42,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      migrator:
+        condition: service_completed_successfully
     expose:
       - "8000"
     environment:

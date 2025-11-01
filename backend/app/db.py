@@ -7,6 +7,8 @@ from contextlib import contextmanager
 from typing import Generator
 from urllib.parse import quote_plus
 
+import re
+
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import OperationalError
@@ -73,10 +75,48 @@ def ensure_result_columns(engine: Engine) -> None:
                 connection.execute(text(ddl))
 
 
+IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def quote_identifier(identifier: str) -> str:
+    """Return a safely quoted SQL identifier."""
+    if not IDENTIFIER_RE.match(identifier):
+        raise ValueError(
+            "PostgreSQL identifiers may only contain letters, numbers, and underscores "
+            "and cannot start with a number."
+        )
+    return f'"{identifier}"'
+
+
+def run_schema_migrations(engine: Engine) -> None:
+    """Create or upgrade database objects managed by SQLAlchemy."""
+    db_models.Base.metadata.create_all(bind=engine)
+    ensure_result_columns(engine)
+
+
+def run_role_migrations(engine: Engine) -> None:
+    """Ensure the application role retains access to the public schema."""
+    username = os.getenv("POSTGRES_USER")
+    if not username:
+        return
+
+    quoted_username = quote_identifier(username)
+    grants = [
+        f"GRANT USAGE ON SCHEMA public TO {quoted_username}",
+        f"GRANT CREATE ON SCHEMA public TO {quoted_username}",
+        f"GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO {quoted_username}",
+        f"GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO {quoted_username}",
+        f"ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO {quoted_username}",
+        f"ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO {quoted_username}",
+    ]
+
+    with engine.begin() as connection:
+        for grant in grants:
+            connection.execute(text(grant))
+
+
 DATABASE_URL = build_database_url()
 engine = create_engine_with_retry(DATABASE_URL)
-db_models.Base.metadata.create_all(bind=engine)
-ensure_result_columns(engine)
 
 SessionLocal = sessionmaker(
     autocommit=False,
@@ -104,4 +144,6 @@ __all__ = [
     "DATABASE_URL",
     "engine",
     "get_session",
+    "run_role_migrations",
+    "run_schema_migrations",
 ]

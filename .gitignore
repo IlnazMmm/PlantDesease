@@ -1,6 +1,6 @@
 docker_kill_cleanup.sh
-.idea
 .venv
 .idea
 ml/data
 frontend/node_modules
+.env

@@ -1,6 +1,5 @@
 import logging
 import shutil
-from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List
@@ -9,9 +8,8 @@ from uuid import uuid4
 from fastapi import BackgroundTasks, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
-from sqlalchemy import create_engine, inspect, text
-from sqlalchemy.orm import Session, sessionmaker
 
+from .db import get_session
 from .models import db_models, schemas
 from .services import inference as infer_service
 from .services.job_store import JobStatus, job_store
@@ -21,39 +19,6 @@ UPLOAD_DIR = BASE_DIR / "uploads"
 GRADCAM_DIR = BASE_DIR / "static" / "gradcam"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 GRADCAM_DIR.mkdir(parents=True, exist_ok=True)
-
-# Simple SQLite DB (metadata)
-DATABASE_URL = f"sqlite:///{BASE_DIR / 'app.db'}"
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
-db_models.Base.metadata.create_all(bind=engine)
-
-
-def ensure_result_columns() -> None:
-    """Ensure optional columns exist when running against an old SQLite file."""
-
-    with engine.connect() as connection:
-        inspector = inspect(connection)
-        if "results" not in inspector.get_table_names():
-            return
-
-        existing = {column["name"] for column in inspector.get_columns("results")}
-
-        migrations = {
-            "label": "ALTER TABLE results ADD COLUMN label VARCHAR",
-            "description": "ALTER TABLE results ADD COLUMN description TEXT",
-            "treatment": "ALTER TABLE results ADD COLUMN treatment TEXT",
-            "prevention": "ALTER TABLE results ADD COLUMN prevention TEXT",
-            "pathogen": "ALTER TABLE results ADD COLUMN pathogen TEXT",
-            "created_at": "ALTER TABLE results ADD COLUMN created_at TIMESTAMP",
-        }
-
-        for column_name, ddl in migrations.items():
-            if column_name not in existing:
-                connection.execute(text(ddl))
-
-
-ensure_result_columns()
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, expire_on_commit=False, bind=engine)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -67,19 +32,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
-@contextmanager
-def get_session() -> Session:
-    db = SessionLocal()
-    try:
-        yield db
-        db.commit()
-    except Exception:
-        db.rollback()
-        raise
-    finally:
-        db.close()
-
 @app.post("/api/v1/upload", response_model=schemas.UploadResponse)
 async def upload_image(file: UploadFile = File(...)):
     ext = Path(file.filename).suffix or ".jpg"
@@ -87,7 +39,7 @@ async def upload_image(file: UploadFile = File(...)):
     out_path = UPLOAD_DIR / f"{file_id}{ext}"
     with open(out_path, "wb") as f:
         shutil.copyfileobj(file.file, f)
-    # store minimal metadata in sqlite
+    # store minimal metadata in the relational database
     with get_session() as db:
         meta = db_models.Upload(file_id=file_id, path=str(out_path), filename=file.filename)
         db.add(meta)

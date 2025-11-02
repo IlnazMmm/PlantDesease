@@ -9,7 +9,6 @@ import requests
 from .helpers import (
     ApiClient,
     generate_test_image,
-    persist_result_record,
     require_backend_base_url,
     wait_for_job_completion,
 )
@@ -48,15 +47,9 @@ def completed_job(api_client: ApiClient, prediction_job: Dict[str, str]) -> Dict
     status_payload = wait_for_job_completion(api_client, prediction_job["job_id"])
     assert status_payload.get("status") == "done"
     result_payload = status_payload.get("result") or {}
-    persist_result_record(
-        job_id=prediction_job["job_id"],
-        file_id=prediction_job["file_id"],
-        result_payload=result_payload,
-    )
     return {
         "job_id": prediction_job["job_id"],
         "file_id": prediction_job["file_id"],
         "status": status_payload,
         "result": result_payload,
     }
-

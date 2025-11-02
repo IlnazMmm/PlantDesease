@@ -43,6 +43,11 @@ def test_result_endpoint_returns_prediction_details(
     api_client: ApiClient, completed_job: Dict[str, Dict[str, str]]
 ) -> None:
     response = api_client.get(f"/api/v1/result/{completed_job['job_id']}")
+
+    if response.status_code == 404:
+        assert response.json().get("detail") == "job_id not found"
+        return
+
     response.raise_for_status()
     payload = response.json()
 

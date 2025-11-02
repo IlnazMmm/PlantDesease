@@ -10,6 +10,12 @@ from typing import Any, Dict
 import pytest
 import requests
 from PIL import Image
+from dotenv import find_dotenv, load_dotenv
+
+
+# Load environment variables from a local .env file when present so developers can
+# configure BACKEND_BASE_URL without exporting it manually.
+load_dotenv(find_dotenv(usecwd=True), override=False)
 
 
 @dataclass

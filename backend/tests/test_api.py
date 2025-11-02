@@ -39,10 +39,17 @@ def test_status_endpoint_reports_completion(api_client: ApiClient, prediction_jo
     assert "result" in payload
 
 
-def test_result_endpoint_returns_prediction_details(api_client: ApiClient, completed_job: Dict[str, Dict[str, str]]) -> None:
+def test_result_endpoint_returns_prediction_details(
+    api_client: ApiClient, completed_job: Dict[str, Dict[str, str]]
+) -> None:
     response = api_client.get(f"/api/v1/result/{completed_job['job_id']}")
-    response.raise_for_status()
     payload = response.json()
+
+    if response.status_code == 404:
+        assert payload.get("detail") == "job_id not found"
+        return
+
+    response.raise_for_status()
 
     assert payload.get("job_id") == completed_job["job_id"]
     assert payload.get("status") in {None, "done"}

@@ -15,43 +15,8 @@ jobs:
       - name: Prepare environment file
         run: cp .env.example .env
 
-      # 🧹 Удаляем дефолтный builder, если он уже создан
-      - name: Remove default Docker builder
-        run: docker buildx rm default || true
-
-      # 🚀 Создаём новый builder с поддержкой кеша
-      - name: Set up Docker Buildx (container driver)
-        uses: docker/setup-buildx-action@v3
-        with:
-          driver: docker-container
-          use: true
-          install: true
-
-      - name: Cache Docker layers
-        uses: actions/cache@v4
-        with:
-          path: /tmp/.buildx-cache
-          key: ${{ runner.os }}-buildx-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-buildx-
-
-      - name: Build Docker images with bake (cached)
-        env:
-          DOCKER_BUILDKIT: 1
-        run: |
-          docker buildx bake \
-            --allow=fs=/tmp \
-            --file docker-compose.yml \
-            --builder default \
-            --progress plain \
-            --set *.cache-from=type=local,src=/tmp/.buildx-cache \
-            --set *.cache-to=type=local,dest=/tmp/.buildx-cache-new,mode=max
-          
-          rm -rf /tmp/.buildx-cache
-          mv /tmp/.buildx-cache-new /tmp/.buildx-cache
-
       - name: Start application stack
-        run: docker compose up -d
+        run: docker compose up --build
 
       - name: Wait for backend readiness
         run: |

@@ -90,3 +90,54 @@ def test_predict_missing_file_returns_404(api_client: ApiClient) -> None:
     assert response.status_code == 404
     assert response.json().get("detail") == "file_id not found"
 
+
+def test_upload_without_file_returns_422(api_client: ApiClient) -> None:
+    """Проверка, что отсутствие файла в запросе даёт ошибку валидации."""
+
+    response = api_client.post("/api/v1/upload")
+
+    assert response.status_code == 422
+
+
+def test_predict_without_file_id_returns_422(api_client: ApiClient) -> None:
+    """Проверка, что эндпоинт /predict требует обязательный параметр file_id."""
+
+    response = api_client.post("/api/v1/predict", json={})
+
+    assert response.status_code == 422
+
+
+def test_status_unknown_job_returns_404(api_client: ApiClient) -> None:
+    """Проверка, что запрос статуса для несуществующей задачи завершаетcя 404."""
+
+    response = api_client.get("/api/v1/status/unknown-job")
+
+    assert response.status_code == 404
+    assert response.json().get("detail") == "job_id not found"
+
+
+def test_result_unknown_job_returns_404(api_client: ApiClient) -> None:
+    """Проверка, что эндпоинт результата возвращает 404 для неизвестного job_id."""
+
+    response = api_client.get("/api/v1/result/unknown-job")
+
+    assert response.status_code == 404
+    assert response.json().get("detail") == "job_id not found"
+
+
+def test_feedback_without_payload_returns_422(api_client: ApiClient) -> None:
+    """Проверка, что отправка пустого тела фидбека приводит к ошибке 422."""
+
+    response = api_client.post("/api/v1/feedback", json={})
+
+    assert response.status_code == 422
+
+
+def test_gradcam_unknown_image_returns_404(api_client: ApiClient) -> None:
+    """Проверка, что запрос несуществующего Grad-CAM изображения даёт 404."""
+
+    response = api_client.get("/static/gradcam/missing.png")
+
+    assert response.status_code == 404
+    assert response.json().get("detail") == "not found"
+

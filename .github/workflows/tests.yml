@@ -15,13 +15,17 @@ jobs:
       - name: Prepare environment file
         run: cp .env.example .env
 
+      # 🧹 Удаляем дефолтный builder, если он уже создан
       - name: Remove default Docker builder
         run: docker buildx rm default || true
 
+      # 🚀 Создаём новый builder с поддержкой кеша
       - name: Set up Docker Buildx (container driver)
         uses: docker/setup-buildx-action@v3
         with:
           driver: docker-container
+          use: true
+          install: true
 
       - name: Cache Docker layers
         uses: actions/cache@v4

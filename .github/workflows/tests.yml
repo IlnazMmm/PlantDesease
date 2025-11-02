@@ -56,7 +56,7 @@ jobs:
 
       - name: Run backend tests
         env:
-          BACKEND_BASE_URL: http://localhost
+          BACKEND_BASE_URL: http://localhost/api
         run: pytest backend/tests
 
       - name: Run frontend tests

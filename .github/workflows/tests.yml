@@ -35,7 +35,6 @@ jobs:
       - name: Wait for backend readiness
         run: |
           urls=(
-            "http://localhost/api/v1/history?limit=1"
             "http://localhost/api/api/v1/history?limit=1"
           )
           for attempt in {1..60}; do

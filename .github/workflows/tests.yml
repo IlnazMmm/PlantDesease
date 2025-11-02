@@ -12,6 +12,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Prepare environment file
+        run: cp .env.example .env
+
       - name: Start application stack
         run: docker compose up -d --build
 

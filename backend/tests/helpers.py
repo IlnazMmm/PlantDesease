@@ -28,18 +28,6 @@ class ApiClient:
         normalized_base = self.base_url.rstrip("/")
         normalized_path = path if path.startswith("/") else f"/{path}"
 
-        # Allow BACKEND_BASE_URL to point either to the root domain
-        # (e.g. http://localhost) or to a prefixed API mount such as
-        # http://localhost/api or http://localhost/api/v1. In the latter
-        # case we strip the duplicated prefix to avoid generating URLs like
-        # /api/v1/api/v1/upload which resolve to 404.
-        for prefix in ("/api/v1", "/api"):
-            if normalized_base.endswith(prefix) and normalized_path.startswith(prefix):
-                normalized_path = normalized_path[len(prefix) :]
-                if not normalized_path.startswith("/"):
-                    normalized_path = f"/{normalized_path}"
-                break
-
         return f"{normalized_base}{normalized_path}"
 
     def post(self, path: str, **kwargs: Any) -> requests.Response:

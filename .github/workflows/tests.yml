@@ -15,11 +15,14 @@ jobs:
       - name: Prepare environment file
         run: cp .env.example .env
 
-      - name: Set up Docker Buildx
+      - name: Remove default Docker builder
+        run: docker buildx rm default || true
+
+      - name: Set up Docker Buildx (container driver)
         uses: docker/setup-buildx-action@v3
         with:
-          driver-opts: |
-            image=moby/buildkit:latest
+          driver: docker-container
+          buildkitd-flags: --allow-insecure-entitlement=fs
 
       - name: Cache Docker layers
         uses: actions/cache@v4

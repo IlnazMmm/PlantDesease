@@ -28,12 +28,13 @@ jobs:
           DOCKER_BUILDKIT: 1
         run: |
           docker buildx bake \
+            --allow=fs=/tmp \
             --file docker-compose.yml \
             --builder default \
             --progress plain \
             --set *.cache-from=type=local,src=/tmp/.buildx-cache \
             --set *.cache-to=type=local,dest=/tmp/.buildx-cache-new,mode=max
-
+          
           # Обновляем кеш после сборки
           rm -rf /tmp/.buildx-cache
           mv /tmp/.buildx-cache-new /tmp/.buildx-cache

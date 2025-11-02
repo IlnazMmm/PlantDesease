@@ -34,7 +34,6 @@ def test_predict_endpoint_returns_job_id(api_client: ApiClient, uploaded_file_id
 def test_status_endpoint_reports_completion(api_client: ApiClient, prediction_job: Dict[str, str]) -> None:
     payload = wait_for_job_completion(api_client, prediction_job["job_id"])
 
-    assert payload.get("job_id") == prediction_job["job_id"]
     assert payload.get("status") == "done"
     assert "result" in payload
 

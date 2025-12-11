@@ -22,7 +22,7 @@ services:
   migrator:
     build:
       context: ./backend
-      dockerfile: backend/migrator.Dockerfile
+      dockerfile: migrator.Dockerfile
     container_name: migrator
     depends_on:
       db:

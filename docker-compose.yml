@@ -20,7 +20,9 @@ services:
       retries: 5
 
   migrator:
-    build: ./backend
+    build:
+      context: ./backend
+      dockerfile: migrator.Dockerfile
     container_name: migrator
     depends_on:
       db:

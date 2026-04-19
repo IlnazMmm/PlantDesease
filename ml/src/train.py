@@ -45,7 +45,14 @@ def _create_scheduler(optimizer: optim.Optimizer, patience: int) -> Optional[Red
     return ReduceLROnPlateau(optimizer, mode="max", patience=patience, factor=0.5)
 
 
-def _save_checkpoint(out_path: Path, state_dict: dict, class_names: tuple[str, ...], history: list[dict], config: TrainConfig) -> None:
+def _save_checkpoint(
+    out_path: Path,
+    state_dict: dict,
+    class_names: tuple[str, ...],
+    history: list[dict],
+    config: TrainConfig,
+    confusion_matrix_data: dict[str, list[int]],
+) -> None:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     cpu_state = {key: value.cpu() for key, value in state_dict.items()}
     torch.save(
@@ -54,6 +61,7 @@ def _save_checkpoint(out_path: Path, state_dict: dict, class_names: tuple[str, .
             "classes": class_names,
             "history": history,
             "config": asdict(config),
+            "confusion_matrix_data": confusion_matrix_data,
         },
         out_path,
     )
@@ -87,7 +95,7 @@ def train_model(config: TrainConfig) -> None:
     scheduler = _create_scheduler(optimizer, config.scheduler_patience)
 
     trainer = Trainer(model, criterion, optimizer, device, scheduler=scheduler)
-    best_state, history = trainer.fit(
+    best_state, history, confusion_matrix_data = trainer.fit(
         epochs=config.epochs,
         train_loader=dataloaders.train,
         valid_loader=dataloaders.valid,
@@ -99,6 +107,7 @@ def train_model(config: TrainConfig) -> None:
         class_names=dataloaders.class_names,
         history=history.to_serializable(),
         config=config,
+        confusion_matrix_data=confusion_matrix_data,
     )
 
 
@@ -148,4 +157,3 @@ def _parse_args() -> TrainConfig:
 
 if __name__ == "__main__":
     train_model(_parse_args())
-

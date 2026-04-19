@@ -58,7 +58,9 @@ class Trainer:
         self.device = device
         self.scheduler = scheduler
 
-    def _run_epoch(self, dataloader: DataLoader, train: bool) -> EpochMetrics:
+    def _run_epoch(
+        self, dataloader: DataLoader, train: bool, collect_predictions: bool = False
+    ) -> tuple[EpochMetrics, Optional[list[int]], Optional[list[int]]]:
         if train:
             self.model.train()
         else:
@@ -67,6 +69,8 @@ class Trainer:
         running_loss = 0.0
         correct = 0
         total = 0
+        all_targets: list[int] = [] if collect_predictions else None
+        all_predictions: list[int] = [] if collect_predictions else None
 
         context = torch.enable_grad() if train else torch.no_grad()
         with context:
@@ -86,24 +90,30 @@ class Trainer:
                 predictions = outputs.argmax(dim=1)
                 correct += (predictions == targets).sum().item()
                 total += targets.size(0)
+                if collect_predictions:
+                    all_targets.extend(targets.detach().cpu().tolist())
+                    all_predictions.extend(predictions.detach().cpu().tolist())
 
         avg_loss = running_loss / total
         accuracy = correct / total
-        return EpochMetrics(loss=avg_loss, accuracy=accuracy)
+        return EpochMetrics(loss=avg_loss, accuracy=accuracy), all_targets, all_predictions
 
     def fit(
         self,
         epochs: int,
         train_loader: DataLoader,
         valid_loader: DataLoader,
-    ) -> tuple[Dict[str, torch.Tensor], TrainingHistory]:
+    ) -> tuple[Dict[str, torch.Tensor], TrainingHistory, Dict[str, List[int]]]:
         history = TrainingHistory()
         best_state = copy.deepcopy(self.model.state_dict())
         best_accuracy = 0.0
+        best_confusion_data: Dict[str, List[int]] = {"targets": [], "predictions": []}
 
         for epoch in range(1, epochs + 1):
-            train_metrics = self._run_epoch(train_loader, train=True)
-            valid_metrics = self._run_epoch(valid_loader, train=False)
+            train_metrics, _, _ = self._run_epoch(train_loader, train=True)
+            valid_metrics, valid_targets, valid_predictions = self._run_epoch(
+                valid_loader, train=False, collect_predictions=True
+            )
             history.append(train_metrics, valid_metrics)
 
             if self.scheduler is not None:
@@ -112,6 +122,10 @@ class Trainer:
             if valid_metrics.accuracy > best_accuracy:
                 best_accuracy = valid_metrics.accuracy
                 best_state = copy.deepcopy(self.model.state_dict())
+                best_confusion_data = {
+                    "targets": valid_targets or [],
+                    "predictions": valid_predictions or [],
+                }
 
             print(
                 f"Epoch {epoch}/{epochs} "
@@ -119,5 +133,4 @@ class Trainer:
                 f"val_loss={valid_metrics.loss:.4f} val_acc={valid_metrics.accuracy:.3f}"
             )
 
-        return best_state, history
-
+        return best_state, history, best_confusion_data

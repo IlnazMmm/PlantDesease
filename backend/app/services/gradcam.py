@@ -39,7 +39,6 @@ class GradCamGenerator:
 
             image = Image.open(image_path).convert("RGB")
             input_tensor = preprocess(image).unsqueeze(0).to(device)
-            input_tensor.requires_grad_(True)
 
             activations: Dict[str, torch.Tensor] = {}
             gradients: Dict[str, torch.Tensor] = {}
@@ -47,10 +46,10 @@ class GradCamGenerator:
             target_layer = self._resolve_target_layer(model)
 
             def forward_hook(_, __, output):
-                activations["value"] = output.detach()
+                activations["value"] = output
 
             def backward_hook(_, __, grad_output):
-                gradients["value"] = grad_output[0].detach()
+                gradients["value"] = grad_output[0]
 
             handle_forward = target_layer.register_forward_hook(forward_hook)
             if hasattr(target_layer, "register_full_backward_hook"):
@@ -64,7 +63,7 @@ class GradCamGenerator:
                 if target_index is None:
                     target_index = int(scores.argmax(dim=1).item())
 
-                score = scores[:, target_index]
+                score = scores[:, target_index].sum()
                 if hasattr(model, "zero_grad"):
                     try:
                         model.zero_grad(set_to_none=True)
@@ -78,7 +77,7 @@ class GradCamGenerator:
                 activations_value = activations["value"]
                 gradients_value = gradients["value"]
 
-                weights = gradients_value.mean(dim=(1, 2), keepdim=True)
+                weights = gradients_value.mean(dim=(2, 3), keepdim=True)
                 cam = torch.relu((weights * activations_value).sum(dim=1)).squeeze(0)
 
                 heatmap = self._build_heatmap(cam, image.size)
@@ -126,6 +125,19 @@ class GradCamGenerator:
         cached = getattr(model, "_gradcam_target_layer", None)
         if cached is not None:
             return cached
+
+        # EfficientNet (torchvision) works best when Grad-CAM is attached to the
+        # final 1x1 conv before pooling (features[8][0]). Keep a generic fallback
+        # for other backbones.
+        features = getattr(model, "features", None)
+        if isinstance(features, nn.Sequential) and len(features) >= 9:
+            candidate = features[8]
+            if isinstance(candidate, nn.Sequential) and len(candidate) > 0 and isinstance(candidate[0], nn.Conv2d):
+                model._gradcam_target_layer = candidate[0]  # type: ignore[attr-defined]
+                return candidate[0]
+            if isinstance(candidate, nn.Conv2d):
+                model._gradcam_target_layer = candidate  # type: ignore[attr-defined]
+                return candidate
 
         conv_layers = [module for module in model.modules() if isinstance(module, nn.Conv2d)]
         if not conv_layers:

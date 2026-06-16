@@ -43,8 +43,8 @@ export function ResultPanel({ result, gradcamSrc }: ResultPanelProps) {
 
       {gradcamSrc && (
         <figure className="result__figure">
-          <img key={result.job_id ?? result.gradcam_url} src={gradcamSrc} alt="Grad-CAM visualization" />
-          <figcaption>Тепловая карта уязвимых участков листа.</figcaption>
+          <img key={result.job_id ?? result.gradcam_url} src={gradcamSrc} alt="Исходное изображение листа" />
+          <figcaption>Исходное изображение листа без цветовой тепловой карты.</figcaption>
         </figure>
       )}
 

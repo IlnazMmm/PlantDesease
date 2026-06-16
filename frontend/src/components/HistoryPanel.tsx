@@ -2,6 +2,7 @@ import React from "react";
 
 import { HistoryItem } from "../types/prediction";
 import { formatConfidence, formatDateTime, getConfidenceTone } from "../utils/prediction";
+import { getReviewStatusLabel } from "../utils/review";
 
 interface HistoryPanelProps {
   history: HistoryItem[];
@@ -73,6 +74,7 @@ export function HistoryPanel({
                 <span className={`history__confidence history__confidence--${getConfidenceTone(item.confidence ?? 0)}`}>
                   {formatConfidence(item.confidence)}
                 </span>
+                <span className="history__review-status">{getReviewStatusLabel(item.review_status)}</span>
               </div>
               <button
                 type="button"

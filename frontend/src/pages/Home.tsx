@@ -30,8 +30,8 @@ export default function Home(): JSX.Element {
   }, [history.actions.refreshHistory]);
 
   const {
-    state: { file, jobId, status, result, error, isSubmitting, copyFeedback },
-    actions: { setFile, startPrediction, copyJobId },
+    state: { file, jobId, status, result, error, isSubmitting, copyFeedback, reviewSuccess, isReviewSaving, labels },
+    actions: { setFile, startPrediction, copyJobId, submitReview },
     derived: { gradcamSrc },
     refs: { analysisAnchorRef },
   } = prediction;
@@ -64,7 +64,14 @@ export default function Home(): JSX.Element {
 
       <StatusBanner status={status} jobId={jobId} onCopy={copyJobId} copyFeedback={copyFeedback} />
 
-      <ResultPanel result={result} gradcamSrc={gradcamSrc} />
+      <ResultPanel
+        result={result}
+        gradcamSrc={gradcamSrc}
+        labels={labels}
+        isReviewSaving={isReviewSaving}
+        reviewSuccess={reviewSuccess}
+        onSubmitReview={submitReview}
+      />
 
       <HistoryPanel
         history={historyItems}

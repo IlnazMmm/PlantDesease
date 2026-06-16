@@ -14,6 +14,7 @@ interface ApplyResultOptions {
 }
 
 type ResultResponse = PredictionResult & { status?: string };
+const IN_PROGRESS_RESULT_STATUSES = new Set(["queued", "processing", "running", "pending"]);
 
 export function usePrediction(options?: UsePredictionOptions) {
   const onResultLoadedRef = useRef<(() => void) | undefined>(options?.onResultLoaded);
@@ -77,12 +78,23 @@ export function usePrediction(options?: UsePredictionOptions) {
         return false;
       }
 
-      if (typeof payload.status === "string" && payload.status !== "done") {
-        setStatus(normalizeStatus(payload.status));
-        setResult(null);
-        setJobId(id);
-        setError(options?.pendingMessage ?? "Задача ещё выполняется. Попробуйте позже.");
-        return false;
+      if (typeof payload.status === "string") {
+        const normalizedPayloadStatus = payload.status.toLowerCase();
+        if (IN_PROGRESS_RESULT_STATUSES.has(normalizedPayloadStatus)) {
+          setStatus(normalizeStatus(payload.status));
+          setResult(null);
+          setJobId(id);
+          setError(options?.pendingMessage ?? "Задача ещё выполняется. Попробуйте позже.");
+          return false;
+        }
+
+        if (normalizedPayloadStatus === "error") {
+          setStatus("error");
+          setResult(null);
+          setJobId(id);
+          setError("Произошла ошибка при обработке задачи. Попробуйте еще раз.");
+          return false;
+        }
       }
 
       const { status: _ignored, ...rest } = payload as PredictionResult & { status?: string };
@@ -209,7 +221,7 @@ export function usePrediction(options?: UsePredictionOptions) {
     setReviewSuccess(null);
     try {
       const response = await api.post(`/api/v1/review/${id}`, payload);
-      const review = response.data as ReviewResponse;
+      const { status: _ignored, ...review } = response.data as ReviewResponse;
       setResult((current) => current ? { ...current, ...review, review_warning: null } : current);
       setReviewSuccess("Подтверждение успешно сохранено.");
       setError(null);

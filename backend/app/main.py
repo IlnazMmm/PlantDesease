@@ -262,7 +262,7 @@ def review_result(job_id: str, payload: schemas.ReviewRequest):
     try:
         record = job_store.get(job_id)
         if record.result is not None:
-            record.result.update(response.dict())
+            record.result.update(response.dict(exclude={"status"}))
             record.result["reviewed_at"] = response.reviewed_at.isoformat() if response.reviewed_at else None
             record.result["review_warning"] = None
     except KeyError:

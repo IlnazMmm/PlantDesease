@@ -81,8 +81,10 @@ class GradCamGenerator:
                 weights = gradients_value.mean(dim=(1, 2), keepdim=True)
                 cam = torch.relu((weights * activations_value).sum(dim=1)).squeeze(0)
 
-                heatmap = self._build_heatmap(cam, image.size)
-                combined = Image.alpha_composite(image.convert("RGBA"), heatmap).convert("RGB")
+                # The UI should display the original leaf photo without a colored
+                # heatmap overlay. We still run Grad-CAM above to validate that the
+                # target layer can be resolved, but persist a clean image for users.
+                combined = image.convert("RGB")
 
             finally:
                 handle_forward.remove()
@@ -138,9 +140,7 @@ class GradCamGenerator:
         return target_layer
 
     def _fallback_overlay(self, image_path: str, label: str) -> Image.Image:
-        image = Image.open(image_path).convert("RGBA")
-        overlay = Image.new("RGBA", image.size, (255, 0, 0, 80))
-        combined = Image.alpha_composite(image, overlay).convert("RGB")
+        combined = Image.open(image_path).convert("RGB")
         self._annotate_image(combined, label)
         return combined
 

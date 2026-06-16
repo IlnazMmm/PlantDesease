@@ -1,3 +1,4 @@
+import json
 import logging
 import shutil
 from datetime import datetime
@@ -9,6 +10,14 @@ from fastapi import BackgroundTasks, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
+from .config import (
+    CONFIDENCE_THRESHOLD,
+    REVIEW_REQUIRED_WARNING,
+    REVIEW_STATUS_CONFIRMED,
+    REVIEW_STATUS_CORRECTED,
+    REVIEW_STATUS_NOT_REQUIRED,
+    REVIEW_STATUS_PENDING,
+)
 from .db import get_session
 from .models import db_models, schemas
 from .services import inference as infer_service
@@ -69,13 +78,17 @@ def _process_job(job_id: str, path: str):
             gradcam_image.save(gradcam_path)
             gradcam_url = f"/static/gradcam/{job_id}.png"
 
+        confidence = float(result.get("confidence", 0.0))
+        review_required = confidence < CONFIDENCE_THRESHOLD
+        review_status = REVIEW_STATUS_PENDING if review_required else REVIEW_STATUS_NOT_REQUIRED
+
         with get_session() as db:
             record = db_models.Result(
                 job_id=job_id,
                 file_path=path,
                 plant=result.get("plant", ""),
                 disease=result.get("disease", ""),
-                confidence=float(result.get("confidence", 0.0)),
+                confidence=confidence,
                 gradcam_path=str(GRADCAM_DIR / f"{job_id}.png") if gradcam_image is not None else None,
                 label=result.get("label"),
                 description=result.get("description"),
@@ -83,6 +96,8 @@ def _process_job(job_id: str, path: str):
                 prevention=result.get("prevention"),
                 pathogen=result.get("pathogen"),
                 created_at=completed_at,
+                review_required=review_required,
+                review_status=review_status,
             )
             db.add(record)
 
@@ -91,6 +106,12 @@ def _process_job(job_id: str, path: str):
             "gradcam_url": gradcam_url,
             "job_id": job_id,
             "created_at": completed_at.isoformat(),
+            "review_required": review_required,
+            "review_status": review_status,
+            "expert_label": None,
+            "expert_comment": None,
+            "reviewed_at": None,
+            "review_warning": REVIEW_REQUIRED_WARNING if review_required else None,
         }
         job_store.mark_done(job_id, payload)
         logger.info("Job %s finished", job_id)
@@ -146,10 +167,27 @@ def get_result(job_id: str):
             "pathogen": db_result.pathogen or "",
             "label": db_result.label or None,
             "created_at": db_result.created_at.isoformat() if db_result.created_at else None,
+            "review_required": bool(db_result.review_required),
+            "review_status": db_result.review_status or REVIEW_STATUS_NOT_REQUIRED,
+            "expert_label": db_result.expert_label,
+            "expert_comment": db_result.expert_comment,
+            "reviewed_at": db_result.reviewed_at.isoformat() if db_result.reviewed_at else None,
+            "review_warning": REVIEW_REQUIRED_WARNING if db_result.review_required else None,
         }
 
     return payload
 
+
+
+@app.get("/api/v1/labels", response_model=List[str])
+def list_labels():
+    labels_path = BASE_DIR / "app" / "data" / "plant_advice.json"
+    try:
+        with open(labels_path, "r", encoding="utf-8") as handle:
+            return sorted(json.load(handle).keys())
+    except Exception as exc:
+        logger.exception("Failed to load labels")
+        raise HTTPException(status_code=500, detail="labels unavailable") from exc
 
 @app.get("/api/v1/history", response_model=List[schemas.ResultSummary])
 def list_history(limit: int = 10):
@@ -179,10 +217,59 @@ def list_history(limit: int = 10):
                 gradcam_url=gradcam_url,
                 label=row.label or None,
                 created_at=row.created_at,
+                review_required=bool(row.review_required),
+                review_status=row.review_status or REVIEW_STATUS_NOT_REQUIRED,
+                expert_label=row.expert_label,
+                expert_comment=row.expert_comment,
+                reviewed_at=row.reviewed_at,
             )
         )
 
     return items
+
+
+@app.post("/api/v1/review/{job_id}", response_model=schemas.ReviewResponse)
+def review_result(job_id: str, payload: schemas.ReviewRequest):
+    with get_session() as db:
+        result = db.query(db_models.Result).filter_by(job_id=job_id).first()
+        if result is None:
+            raise HTTPException(status_code=404, detail="job_id not found")
+
+        predicted_label = result.label or ""
+        expert_label = (payload.expert_label or predicted_label).strip() or None
+        confirmed_same_label = payload.confirmed and (expert_label is None or expert_label == predicted_label)
+        result.review_required = True
+        result.review_status = REVIEW_STATUS_CONFIRMED if confirmed_same_label else REVIEW_STATUS_CORRECTED
+        result.expert_label = expert_label
+        result.expert_comment = payload.expert_comment
+        result.reviewed_at = datetime.utcnow()
+
+        response = schemas.ReviewResponse(
+            job_id=result.job_id,
+            review_required=bool(result.review_required),
+            review_status=result.review_status,
+            expert_label=result.expert_label,
+            expert_comment=result.expert_comment,
+            reviewed_at=result.reviewed_at,
+        )
+
+    try:
+        record = job_store.get(job_id)
+        if record.result is not None:
+            record.result.update(response.dict())
+            record.result["reviewed_at"] = response.reviewed_at.isoformat() if response.reviewed_at else None
+            record.result["review_warning"] = None
+    except KeyError:
+        pass
+
+    try:
+        feedback_label = response.expert_label or predicted_label or "unknown"
+        with get_session() as db:
+            db.add(db_models.Feedback(job_id=job_id, correct_label=feedback_label))
+    except Exception:
+        logger.exception("Failed to save review feedback for job %s", job_id)
+
+    return response
 
 @app.post("/api/v1/feedback")
 def feedback(payload: schemas.FeedbackRequest):

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import api, { API_BASE_URL } from "../services/api";
-import { NullableJobStatus, PredictionResult } from "../types/prediction";
+import { NullableJobStatus, PredictionResult, ReviewPayload, ReviewResponse } from "../types/prediction";
 import { getErrorMessage } from "../utils/errors";
 import { normalizeStatus } from "../utils/status";
 
@@ -28,9 +28,22 @@ export function usePrediction(options?: UsePredictionOptions) {
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
+  const [reviewSuccess, setReviewSuccess] = useState<string | null>(null);
+  const [isReviewSaving, setIsReviewSaving] = useState(false);
+  const [labels, setLabels] = useState<string[]>([]);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const analysisAnchorRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    api.get("/api/v1/labels").then((response) => {
+      if (Array.isArray(response.data)) {
+        setLabels(response.data as string[]);
+      }
+    }).catch(() => {
+      setLabels([]);
+    });
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -77,6 +90,7 @@ export function usePrediction(options?: UsePredictionOptions) {
       setStatus("done");
       setJobId(id);
       setError(null);
+      setReviewSuccess(null);
       onResultLoadedRef.current?.();
       return true;
     },
@@ -184,6 +198,31 @@ export function usePrediction(options?: UsePredictionOptions) {
     }
   }, [clearPolling, pollStatus, uploadFile]);
 
+  const submitReview = useCallback(async (payload: ReviewPayload) => {
+    const id = result?.job_id ?? jobId;
+    if (!id) {
+      setError("Не найден ID результата для подтверждения.");
+      return false;
+    }
+
+    setIsReviewSaving(true);
+    setReviewSuccess(null);
+    try {
+      const response = await api.post(`/api/v1/review/${id}`, payload);
+      const review = response.data as ReviewResponse;
+      setResult((current) => current ? { ...current, ...review, review_warning: null } : current);
+      setReviewSuccess("Подтверждение успешно сохранено.");
+      setError(null);
+      onResultLoadedRef.current?.();
+      return true;
+    } catch (err) {
+      setError(getErrorMessage(err, "Не удалось сохранить подтверждение."));
+      return false;
+    } finally {
+      setIsReviewSaving(false);
+    }
+  }, [jobId, result?.job_id]);
+
   const handleCopyJobId = useCallback(async () => {
     if (!jobId) {
       return;
@@ -243,12 +282,16 @@ export function usePrediction(options?: UsePredictionOptions) {
       error,
       isSubmitting,
       copyFeedback,
+      reviewSuccess,
+      isReviewSaving,
+      labels,
     },
     actions: {
       setFile,
       startPrediction,
       loadResult: fetchResultById,
       copyJobId: handleCopyJobId,
+      submitReview,
     },
     derived: {
       gradcamSrc,

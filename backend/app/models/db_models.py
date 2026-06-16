@@ -1,7 +1,7 @@
 from datetime import datetime
 
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy import Column, Integer, String, Float, Text, DateTime
+from sqlalchemy import Boolean, Column, Integer, String, Float, Text, DateTime
 
 Base = declarative_base()
 
@@ -27,6 +27,11 @@ class Result(Base):
     prevention = Column(Text)
     pathogen = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
+    review_required = Column(Boolean, default=False, nullable=False)
+    review_status = Column(String, default="not_required", nullable=False)
+    expert_label = Column(String, nullable=True)
+    expert_comment = Column(Text, nullable=True)
+    reviewed_at = Column(DateTime, nullable=True)
 
 class Feedback(Base):
     __tablename__ = "feedback"

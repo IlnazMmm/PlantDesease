@@ -125,6 +125,16 @@ def test_result_unknown_job_returns_404(api_client: ApiClient) -> None:
     assert response.json().get("detail") == "job_id not found"
 
 
+def test_review_unknown_job_returns_404(api_client: ApiClient) -> None:
+    response = api_client.post(
+        "/api/v1/review/unknown-job",
+        json={"confirmed": True, "expert_label": "unknown", "expert_comment": ""},
+    )
+
+    assert response.status_code == 404
+    assert response.json().get("detail") == "job_id not found"
+
+
 def test_feedback_without_payload_returns_422(api_client: ApiClient) -> None:
     """Проверка, что отправка пустого тела фидбека приводит к ошибке 422."""
 
@@ -141,3 +151,21 @@ def test_gradcam_unknown_image_returns_404(api_client: ApiClient) -> None:
     assert response.status_code == 404
     assert response.json().get("detail") == "not found"
 
+
+
+def test_review_endpoint_accepts_confirmation(api_client: ApiClient, completed_job: Dict[str, Dict[str, str]]) -> None:
+    label = completed_job["result"].get("label") or "unknown"
+    response = api_client.post(
+        f"/api/v1/review/{completed_job['job_id']}",
+        json={
+            "confirmed": True,
+            "expert_label": label,
+            "expert_comment": "Диагноз подтвержден агрономом",
+        },
+    )
+    response.raise_for_status()
+    payload = response.json()
+
+    assert payload.get("status") == "saved"
+    assert payload.get("review_status") == "confirmed"
+    assert payload.get("expert_label") == label

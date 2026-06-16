@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel
 
@@ -19,6 +19,25 @@ class FeedbackRequest(BaseModel):
     correct_label: str
 
 
+ReviewStatus = Literal["not_required", "pending", "confirmed", "corrected"]
+
+
+class ReviewRequest(BaseModel):
+    confirmed: bool
+    expert_label: Optional[str] = None
+    expert_comment: Optional[str] = None
+
+
+class ReviewResponse(BaseModel):
+    status: str = "saved"
+    job_id: str
+    review_required: bool
+    review_status: ReviewStatus
+    expert_label: Optional[str] = None
+    expert_comment: Optional[str] = None
+    reviewed_at: Optional[datetime] = None
+
+
 class ResultSummary(BaseModel):
     job_id: str
     plant: Optional[str] = None
@@ -27,6 +46,11 @@ class ResultSummary(BaseModel):
     gradcam_url: Optional[str] = None
     label: Optional[str] = None
     created_at: Optional[datetime] = None
+    review_required: bool = False
+    review_status: ReviewStatus = "not_required"
+    expert_label: Optional[str] = None
+    expert_comment: Optional[str] = None
+    reviewed_at: Optional[datetime] = None
 
 
 class ResultDetail(ResultSummary):
@@ -35,3 +59,4 @@ class ResultDetail(ResultSummary):
     prevention: Optional[str] = None
     pathogen: Optional[str] = None
     status: Optional[str] = None
+    review_warning: Optional[str] = None

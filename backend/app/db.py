@@ -68,6 +68,11 @@ def ensure_result_columns(engine: Engine) -> None:
             "prevention": "ALTER TABLE results ADD COLUMN prevention TEXT",
             "pathogen": "ALTER TABLE results ADD COLUMN pathogen TEXT",
             "created_at": "ALTER TABLE results ADD COLUMN created_at TIMESTAMP",
+            "review_required": "ALTER TABLE results ADD COLUMN review_required BOOLEAN NOT NULL DEFAULT FALSE",
+            "review_status": "ALTER TABLE results ADD COLUMN review_status VARCHAR NOT NULL DEFAULT 'not_required'",
+            "expert_label": "ALTER TABLE results ADD COLUMN expert_label VARCHAR",
+            "expert_comment": "ALTER TABLE results ADD COLUMN expert_comment TEXT",
+            "reviewed_at": "ALTER TABLE results ADD COLUMN reviewed_at TIMESTAMP",
         }
 
         for column_name, ddl in migrations.items():

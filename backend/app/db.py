@@ -53,8 +53,8 @@ def create_engine_with_retry(url: str, retries: int = 5, delay: float = 2.0) -> 
 
 
 def ensure_result_columns(engine: Engine) -> None:
-    """Ensure optional columns exist when running against an old SQLite file."""
-    with engine.connect() as connection:
+    """Ensure optional result columns exist for already-created databases."""
+    with engine.begin() as connection:
         inspector = inspect(connection)
         if "results" not in inspector.get_table_names():
             return

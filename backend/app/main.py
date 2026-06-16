@@ -18,7 +18,7 @@ from .config import (
     REVIEW_STATUS_NOT_REQUIRED,
     REVIEW_STATUS_PENDING,
 )
-from .db import get_session
+from .db import engine, get_session, run_schema_migrations
 from .models import db_models, schemas
 from .services import inference as infer_service
 from .services.job_store import JobStatus, job_store
@@ -40,6 +40,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.on_event("startup")
+def ensure_database_schema() -> None:
+    """Apply lightweight schema upgrades before accepting prediction jobs."""
+    run_schema_migrations(engine)
 
 @app.post("/api/v1/upload", response_model=schemas.UploadResponse)
 async def upload_image(file: UploadFile = File(...)):

@@ -5,6 +5,8 @@ from typing import Dict
 
 import pytest
 
+from app.db import create_engine_with_retry, ensure_result_columns
+
 from .helpers import ApiClient, generate_test_image, wait_for_job_completion
 
 
@@ -169,3 +171,27 @@ def test_review_endpoint_accepts_confirmation(api_client: ApiClient, completed_j
     assert payload.get("status") == "saved"
     assert payload.get("review_status") == "confirmed"
     assert payload.get("expert_label") == label
+
+
+def test_result_review_columns_migration_is_committed(tmp_path) -> None:
+    database_url = f"sqlite:///{tmp_path / 'migration.db'}"
+    engine = create_engine_with_retry(database_url)
+    with engine.begin() as connection:
+        connection.exec_driver_sql(
+            "CREATE TABLE results ("
+            "id INTEGER PRIMARY KEY, "
+            "job_id VARCHAR, "
+            "confidence FLOAT"
+            ")"
+        )
+
+    ensure_result_columns(engine)
+
+    with engine.connect() as connection:
+        columns = {row[1] for row in connection.exec_driver_sql("PRAGMA table_info(results)")}
+
+    assert "review_required" in columns
+    assert "review_status" in columns
+    assert "expert_label" in columns
+    assert "expert_comment" in columns
+    assert "reviewed_at" in columns
